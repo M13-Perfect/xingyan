@@ -2,13 +2,16 @@
   <div class="app-container">
     <div v-if="!isLoggedIn" class="login-wrapper">
       <div class="login-box">
-        <h1 class="mega-title">序界客户回访管理系统</h1>
+        <h1 class="mega-title">序界回访管理系统</h1>
         <h3 class="sub-title">序界数据终端</h3>
         <div class="input-group">
           <input v-model="loginForm.username" placeholder="请输入您的账号" class="heavy-input text-black">
           <input v-model="loginForm.password" type="password" placeholder="请输入您的密码" class="heavy-input text-black" @keyup.enter="handleLogin">
         </div>
-        <button @click="handleLogin" class="btn-login-action">安全登录</button>
+        <div class="login-actions">
+          <button @click="handleLogin" class="btn-login-action">安全登录</button>
+          <button type="button" class="btn-forgot" @click="handleForgotPassword">忘记密码</button>
+        </div>
       </div>
     </div>
 
@@ -16,28 +19,36 @@
 
       <header class="top-taskbar">
         <div class="taskbar-left">
-          <button class="hamburger-btn" @click="toggleSidebar" title="展开/收起菜单">☰</button>
+          <div class="menu-trigger-wrap">
+            <button class="hamburger-btn" @click.stop="toggleMenuPanel" title="展开/收起菜单">☰</button>
+            <div class="menu-popover" v-if="isMenuOpen" @click.stop>
+              <button :class="{active: view === 'work'}" @click="switchView('work')">📝 工作台</button>
+              <button v-if="user.role === 'admin'" :class="{active: view === 'users'}" @click="switchView('users')">👥 员工管理</button>
+            </div>
+          </div>
           <span class="brand-text">序界客户回访系统</span>
         </div>
         <div class="taskbar-right">
           <span class="user-name">{{ user.username }}</span>
           <span class="role-tag hide-on-mobile">{{ user.role === 'admin' ? '管理员' : '专员' }}</span>
-          <button class="btn-logout-icon" @click="logout" title="退出登录">🚪</button>
+          <button class="btn-notice-icon" @click="toggleNoticeCenter" title="通知中心">
+            <span>🔔</span>
+            <span v-if="noticeUnreadCount > 0" class="notice-dot">{{ noticeUnreadCount > 99 ? '99+' : noticeUnreadCount }}</span>
+          </button>
+          <button class="btn-logout-icon" @click="logout" title="退出登录">退出</button>
         </div>
       </header>
 
-      <div class="sidebar-overlay" v-if="isMobile && isSidebarOpen" @click="toggleSidebar"></div>
-      <aside class="sidebar-drawer" :class="{ 'drawer-open': isSidebarOpen }">
-        <div class="menu">
-          <button :class="{active: view === 'work'}" @click="switchView('work')">📝 工作台</button>
-          <button v-if="user.role === 'admin'" :class="{active: view === 'users'}" @click="switchView('users')">👥 员工管理</button>
-        </div>
-      </aside>
+      <main class="main-body">
 
-      <main class="main-body" :class="{ 'body-shifted': isSidebarOpen && !isMobile }">
-
-        <div class="notify-bar" v-if="pendingCount > 0">
-          🔔 紧急通知：还有 <strong class="pulse-text">{{ pendingCount }}</strong> 条待处理数据，请及时跟进！
+        <div class="notify-bar" v-if="tickerMessages.length > 0">
+          <span class="notify-label">通知</span>
+          <div class="notify-marquee">
+            <div class="notify-track">
+              <span v-for="(message, idx) in tickerMessages" :key="`ticker-a-${idx}`" class="notify-item">{{ message }}</span>
+              <span v-for="(message, idx) in tickerMessages" :key="`ticker-b-${idx}`" class="notify-item">{{ message }}</span>
+            </div>
+          </div>
         </div>
 
         <div v-if="view === 'work'" class="view-content">
@@ -62,7 +73,7 @@
               <input v-model="searchQuery.city" placeholder="🏙️ 按城市筛选..." class="search-input text-black" @keyup.enter="doSearch">
             </div>
             <div class="search-actions">
-              <button @click="doSearch" class="btn-search">精准查询</button>
+              <button @click="doSearch" class="btn-search">查询</button>
               <button @click="resetSearch" class="btn-reset">重置</button>
             </div>
           </div>
@@ -77,7 +88,7 @@
               <input v-model="form.project" placeholder="项目" class="text-black">
               <input v-model="form.budget" placeholder="预算" class="text-black">
               <input v-model="form.remarks" placeholder="需求备注" class="text-black remarks-input span-full-width">
-              <button @click="submitAdd" class="btn-add-fluid span-full-width">提交录入</button>
+              <button @click="submitAdd" class="btn-add-fluid span-full-width">录入</button>
             </div>
           </div>
 
@@ -89,7 +100,6 @@
                 <th>客户称呼</th>
                 <th>联系方式</th>
                 <th>城市 / 项目</th>
-                <th>下次提醒</th>
                 <th>快速操作</th>
               </tr>
               </thead>
@@ -107,9 +117,11 @@
                 <td>
                   <div class="text-black">🏙️ {{ item.city || '未知' }}</div>
                   <div class="text-orange font-bold">📦 {{ item.project || '无' }}</div>
-                </td>
-                <td :class="{'text-danger font-bold': isOverdue(item.nextSurveyDate)}">
-                  📅 {{ stripTime(item.nextSurveyDate) || '未设置' }}
+                  <div class="remark-inline" :class="{ empty: !item.remarks }">
+                    <span class="remark-inline-label">备注：</span>
+                    <span class="remark-inline-text">{{ buildRemarkPreview(item.remarks) }}</span>
+                    <div v-if="item.remarks" class="remark-hover-card">{{ item.remarks }}</div>
+                  </div>
                 </td>
                 <td @click.stop>
                   <button v-if="item.status==='未处理'" @click="processTask(item.id)" class="btn-action-small">✅ 完成处理</button>
@@ -117,7 +129,7 @@
                 </td>
               </tr>
               <tr v-if="surveys.length === 0">
-                <td colspan="6" class="empty-state">当前列表暂无数据</td>
+                <td colspan="5" class="empty-state">当前列表暂无数据</td>
               </tr>
               </tbody>
             </table>
@@ -130,17 +142,36 @@
             <h4 class="form-title"> 开通新员工</h4>
             <div class="form-grid-fluid">
               <input v-model="userForm.username" placeholder="设置账号 (英数)" class="text-black">
-              <input v-model="userForm.password" placeholder="设置初始密码" class="text-black">
+              <input v-model="userForm.password" type="password" placeholder="设置初始密码" class="text-black">
               <button @click="submitAddUser" class="btn-add-fluid dark">确认开通</button>
             </div>
           </div>
           <div class="table-container">
             <table class="modern-table">
-              <thead><tr><th>员工账号</th><th>权限角色</th></tr></thead>
+              <thead>
+              <tr>
+                <th>员工账号</th>
+                <th>权限角色</th>
+                <th>新密码</th>
+                <th>操作</th>
+              </tr>
+              </thead>
               <tbody>
               <tr v-for="u in usersList" :key="u.id">
                 <td class="bold text-black">{{ u.username }}</td>
-                <td><span class="role-badge">业务专员</span></td>
+                <td><span class="role-badge">{{ u.role === 'admin' ? '管理员' : '业务专员' }}</span></td>
+                <td>
+                  <input
+                    v-model="userPasswordDraft[u.id]"
+                    class="user-password-input text-black"
+                    type="password"
+                    placeholder="输入 6 位以上新密码"
+                  >
+                </td>
+                <td class="user-actions">
+                  <button @click="updateStaffPassword(u)" class="btn-inline">修改密码</button>
+                  <button @click="deleteStaffUser(u)" class="btn-inline-danger">删除员工</button>
+                </td>
               </tr>
               </tbody>
             </table>
@@ -153,6 +184,76 @@
           <button :disabled="page >= totalPages" @click="page++;fetchData()">下一页</button>
         </div>
       </main>
+
+      <div class="modal-overlay notice-center-overlay" v-if="isNoticeCenterOpen" @click.self="closeNoticeCenter">
+        <div class="notice-center-panel">
+          <header class="notice-center-header">
+            <h3 class="notice-center-title">通知中心</h3>
+            <button class="btn-close" @click="closeNoticeCenter" title="关闭">✖</button>
+          </header>
+
+          <div class="notice-center-body">
+            <div class="notice-filter-tabs">
+              <button :class="{ active: noticeStatus === 'UNREAD' }" @click="switchNoticeStatus('UNREAD')">未读</button>
+              <button :class="{ active: noticeStatus === 'READ' }" @click="switchNoticeStatus('READ')">已读</button>
+              <button :class="{ active: noticeStatus === 'ALL' }" @click="switchNoticeStatus('ALL')">全部</button>
+            </div>
+
+            <div class="notice-batch-tools">
+              <label class="notice-check-all">
+                <input type="checkbox" :checked="isAllCurrentNoticesSelected" @change="toggleSelectAllNotices">
+                <span>全选</span>
+              </label>
+              <span class="notice-selected-count">已选 {{ selectedNoticeIds.length }} 条</span>
+              <button class="notice-action-btn" @click="markSelectedNoticesRead" :disabled="selectedNoticeIds.length === 0">标记已读</button>
+              <button class="notice-action-btn danger" @click="deleteSelectedNotices" :disabled="selectedNoticeIds.length === 0">删除</button>
+            </div>
+
+            <div class="notice-list" v-if="noticeList.length > 0">
+              <div class="notice-row" v-for="item in noticeList" :key="item.id">
+                <label class="notice-row-check">
+                  <input type="checkbox" :checked="selectedNoticeIds.includes(item.id)" @change="toggleNoticeSelection(item.id)">
+                </label>
+                <div class="notice-row-content">
+                  <div class="notice-row-top">
+                    <span :class="['notice-level', item.level ? item.level.toLowerCase() : 'info']">{{ item.level || 'INFO' }}</span>
+                    <strong class="notice-row-title">{{ item.title }}</strong>
+                    <span class="notice-row-time">{{ item.createdAt }}</span>
+                  </div>
+                  <p class="notice-row-text">{{ item.content }}</p>
+                  <div class="notice-row-actions">
+                    <span v-if="item.isRead" class="notice-read-flag">已读</span>
+                    <button v-else class="notice-inline-btn" @click="markSingleNoticeRead(item.id)">标记已读</button>
+                    <button class="notice-inline-btn danger" @click="deleteSingleNotice(item.id)">删除</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="notice-empty" v-else>当前没有通知</div>
+
+            <div class="pager-fluid notice-pager">
+              <button :disabled="noticePage <= 1" @click="noticePage--;fetchNoticeList()">上一页</button>
+              <span class="pager-txt">第 {{ noticePage }} / {{ noticeTotalPages }} 页</span>
+              <button :disabled="noticePage >= noticeTotalPages" @click="noticePage++;fetchNoticeList()">下一页</button>
+            </div>
+
+            <div class="notice-create-box" v-if="user.role === 'admin'">
+              <h4 class="notice-create-title">发布通知</h4>
+              <div class="notice-create-grid">
+                <input v-model="noticeForm.title" placeholder="通知标题（必填）" class="text-black">
+                <select v-model="noticeForm.level" class="text-black">
+                  <option value="INFO">INFO</option>
+                  <option value="WARN">WARN</option>
+                  <option value="ALERT">ALERT</option>
+                </select>
+                <textarea v-model="noticeForm.content" class="text-black" placeholder="通知内容（必填）"></textarea>
+                <button class="btn-add-fluid" @click="publishNotice">发布通知</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="modal-overlay" v-if="selectedSurvey" @click.self="closeModal">
@@ -165,23 +266,30 @@
 
         <div class="modal-body">
           <div class="modal-grid">
+            <div class="m-item full-width remarks-box focus-remarks">
+              <div class="remarks-header">
+                <span class="lbl block">核心备注 (可直接编辑):</span>
+                <button @click="saveRemarks" class="btn-save-remarks">💾 保存修改</button>
+              </div>
+              <textarea v-model="selectedSurvey.remarks" class="text-area-sim text-black" placeholder="先记录客户核心诉求、顾虑点、推进障碍与下一步动作..."></textarea>
+            </div>
+
+            <div class="m-item focus-card">
+              <span class="lbl">项目:</span>
+              <span class="val focus-val">{{ selectedSurvey.project || '未填写' }}</span>
+            </div>
+            <div class="m-item focus-card budget-card">
+              <span class="lbl">预算:</span>
+              <span class="val focus-val">{{ selectedSurvey.budget || '未填写' }}</span>
+            </div>
+
             <div class="m-item"><span class="lbl">称呼:</span> <span class="val highlight-text">{{ selectedSurvey.name }}</span></div>
             <div class="m-item"><span class="lbl">状态:</span>
               <span :class="['status-badge', selectedSurvey.status === '已处理' ? 'done' : 'todo']">{{ selectedSurvey.status }}</span>
             </div>
             <div class="m-item"><span class="lbl">电话:</span> <span class="val text-black">{{ selectedSurvey.phone || '无' }}</span></div>
             <div class="m-item"><span class="lbl">微信:</span> <span class="val text-black">{{ selectedSurvey.wechat || '无' }}</span></div>
-            <div class="m-item"><span class="lbl">城市:</span> <span class="val text-black">{{ selectedSurvey.city }}</span></div>
-            <div class="m-item"><span class="lbl">项目:</span> <span class="val text-black">{{ selectedSurvey.project }}</span></div>
-            <div class="m-item"><span class="lbl">预算:</span> <span class="val text-orange font-bold">{{ selectedSurvey.budget }}</span></div>
-
-            <div class="m-item full-width mt-2 remarks-box">
-              <div class="remarks-header">
-                <span class="lbl block">需求备注 (可直接编辑):</span>
-                <button @click="saveRemarks" class="btn-save-remarks">💾 保存修改</button>
-              </div>
-              <textarea v-model="selectedSurvey.remarks" class="text-area-sim text-black" placeholder="在这里输入或修改客户的备注信息..."></textarea>
-            </div>
+            <div class="m-item"><span class="lbl">城市:</span> <span class="val text-black">{{ selectedSurvey.city || '未填写' }}</span></div>
 
             <div class="m-item full-width reminder-row-modal">
               <span class="lbl text-danger">⏱️ 设置下次提醒:</span>
@@ -202,7 +310,7 @@
                 <input v-if="selectedSurvey.visibility === 'CUSTOM'" v-model="selectedSurvey.sharedUsers" placeholder="账号,逗号分隔" class="share-input text-black">
                 <button @click="updateShare(selectedSurvey)" class="btn-save-share">保存权限</button>
               </div>
-              <button @click="deleteSingle(selectedSurvey.id)" class="btn-del-modal">🗑️ 永久删除</button>
+              <button @click="deleteSingle(selectedSurvey.id)" class="btn-del-modal">删除</button>
             </div>
           </div>
         </div>
@@ -217,7 +325,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, onMounted, onUnmounted } from 'vue'
+import { computed, ref, reactive, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
 
 const API = '/api'
@@ -225,9 +333,10 @@ const isLoggedIn = ref(false)
 const user = reactive({ username: '', role: '' })
 const loginForm = reactive({ username: '', password: '' })
 const view = ref('work')
+const textEncoder = new TextEncoder()
 
 const isMobile = ref(false)
-const isSidebarOpen = ref(true)
+const isMenuOpen = ref(false)
 
 const selectedSurvey = ref(null)
 const openModal = (item) => { selectedSurvey.value = { ...item } }
@@ -243,19 +352,79 @@ const page = ref(1); const totalPages = ref(1); const totalCount = ref(0)
 const todayDate = new Date().toISOString().split('T')[0]
 const usersList = ref([])
 const userForm = ref({ username: '', password: '', role: 'staff' })
+const userPasswordDraft = reactive({})
+
+const noticeUnreadCount = ref(0)
+const tickerMessages = ref([])
+const isNoticeCenterOpen = ref(false)
+const noticeStatus = ref('UNREAD')
+const noticePage = ref(1)
+const noticeTotalPages = ref(1)
+const noticeList = ref([])
+const noticeTickerList = ref([])
+const selectedNoticeIds = ref([])
+const noticeForm = reactive({ title: '', content: '', level: 'INFO' })
+const isAllCurrentNoticesSelected = computed(
+  () => noticeList.value.length > 0 && noticeList.value.every(item => selectedNoticeIds.value.includes(item.id))
+)
+
+const base64ToArrayBuffer = (base64) => {
+  const binary = atob(base64)
+  const len = binary.length
+  const bytes = new Uint8Array(len)
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i)
+  return bytes.buffer
+}
+
+const arrayBufferToBase64 = (buffer) => {
+  const bytes = new Uint8Array(buffer)
+  let binary = ''
+  const chunkSize = 0x8000
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize))
+  }
+  return btoa(binary)
+}
+
+const encryptPassword = async (plainText) => {
+  if (!window.crypto?.subtle) {
+    throw new Error('当前浏览器不支持 WebCrypto，无法加密密码')
+  }
+  const keyRes = await axios.get(`${API}/security/public-key`)
+  const keyBuffer = base64ToArrayBuffer(keyRes.data.publicKey)
+  const publicKey = await window.crypto.subtle.importKey(
+    'spki',
+    keyBuffer,
+    { name: 'RSA-OAEP', hash: 'SHA-256' },
+    false,
+    ['encrypt']
+  )
+  const encrypted = await window.crypto.subtle.encrypt(
+    { name: 'RSA-OAEP' },
+    publicKey,
+    textEncoder.encode(plainText)
+  )
+  return arrayBufferToBase64(encrypted)
+}
 
 const checkDevice = () => {
-  const ua = navigator.userAgent;
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua);
-  const isSmallScreen = window.innerWidth <= 1024;
-  isMobile.value = isMobileUA || isSmallScreen;
-  isSidebarOpen.value = !isMobile.value;
+  const ua = navigator.userAgent
+  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
+  const isSmallScreen = window.innerWidth <= 1024
+  isMobile.value = isMobileUA || isSmallScreen
 }
-const toggleSidebar = () => { isSidebarOpen.value = !isSidebarOpen.value; }
+const toggleMenuPanel = () => { isMenuOpen.value = !isMenuOpen.value }
 const switchView = (v) => {
-  view.value = v; page.value = 1;
-  if (isMobile.value) isSidebarOpen.value = false;
-  if(v === 'users') fetchUsers(); else fetchData();
+  view.value = v
+  page.value = 1
+  isMenuOpen.value = false
+  if(v === 'users') fetchUsers(); else fetchData()
+}
+
+const handleGlobalClick = (event) => {
+  if (!isMenuOpen.value) return
+  if (event.target?.closest('.menu-trigger-wrap')) return
+  isMenuOpen.value = false
 }
 
 const getRequestErrorMessage = (error, fallback = '服务器网络异常，请稍后重试') => {
@@ -271,24 +440,195 @@ const getRequestErrorMessage = (error, fallback = '服务器网络异常，请�
   return fallback
 }
 
+const getApiErrorMessage = (error, fallback) => {
+  if (axios.isAxiosError(error)) {
+    if (typeof error.response?.data === 'string') return error.response.data
+    if (error.response?.status) return `${fallback}（HTTP ${error.response.status}）`
+    if (error.request) return `${fallback}（无法连接后端）`
+  }
+  return fallback
+}
+
 const handleLogin = async () => {
   if(!loginForm.username) return alert('请输入账号');
+  if(!loginForm.password) return alert('请输入密码');
   try {
-    const res = await axios.post(`${API}/login`, loginForm)
+    const encryptedPassword = await encryptPassword(loginForm.password)
+    const res = await axios.post(`${API}/login`, {
+      username: loginForm.username,
+      password: encryptedPassword
+    })
     if(res.data.success) {
       isLoggedIn.value = true; user.username = res.data.username; user.role = res.data.role
+      loginForm.password = ''
       view.value = 'work'; listStatus.value = '未处理';
       checkDevice();
       await fetchPendingCount();
+      await refreshNoticeData();
       alert(`登录成功！\n目前有 ${pendingCount.value} 条待处理数据。`);
       fetchData()
     } else { alert(res.data.message) }
   } catch (e) { alert(getRequestErrorMessage(e)) }
 }
 
+const handleForgotPassword = () => {
+  alert('请联系系统管理员进行密码重置。')
+}
+
 const fetchPendingCount = async () => {
   const res = await axios.get(`${API}/surveys/pending-count`, { params: { username: user.username, role: user.role } })
   pendingCount.value = res.data
+  rebuildTickerMessages()
+}
+
+const rebuildTickerMessages = () => {
+  const messages = []
+  if (pendingCount.value > 0) {
+    messages.push(`待处理数据 ${pendingCount.value} 条，请及时跟进`)
+  }
+  noticeTickerList.value.forEach(item => {
+    messages.push(`${item.title}：${item.content}`)
+  })
+  tickerMessages.value = messages
+}
+
+const fetchNoticeUnreadCount = async () => {
+  if (!user.username) return
+  const res = await axios.get(`${API}/notices/unread-count`, { params: { username: user.username } })
+  noticeUnreadCount.value = res.data.count || 0
+}
+
+const fetchNoticeList = async () => {
+  if (!user.username) return
+  const res = await axios.get(`${API}/notices`, {
+    params: {
+      username: user.username,
+      status: noticeStatus.value,
+      page: noticePage.value,
+      size: 8
+    }
+  })
+  noticeList.value = res.data.data || []
+  noticeTotalPages.value = res.data.pages || 1
+  selectedNoticeIds.value = selectedNoticeIds.value.filter(id => noticeList.value.some(item => item.id === id))
+}
+
+const fetchNoticeTicker = async () => {
+  if (!user.username) return
+  const res = await axios.get(`${API}/notices`, {
+    params: {
+      username: user.username,
+      status: 'UNREAD',
+      page: 1,
+      size: 3
+    }
+  })
+  noticeTickerList.value = res.data.data || []
+  rebuildTickerMessages()
+}
+
+const refreshNoticeData = async () => {
+  await fetchNoticeUnreadCount()
+  await fetchNoticeTicker()
+  if (isNoticeCenterOpen.value) {
+    await fetchNoticeList()
+  }
+}
+
+const toggleNoticeCenter = async () => {
+  if (!isNoticeCenterOpen.value) {
+    isNoticeCenterOpen.value = true
+    noticeStatus.value = 'UNREAD'
+    noticePage.value = 1
+    selectedNoticeIds.value = []
+    await fetchNoticeList()
+    return
+  }
+  isNoticeCenterOpen.value = false
+}
+
+const closeNoticeCenter = () => {
+  isNoticeCenterOpen.value = false
+}
+
+const switchNoticeStatus = async (status) => {
+  noticeStatus.value = status
+  noticePage.value = 1
+  selectedNoticeIds.value = []
+  await fetchNoticeList()
+}
+
+const toggleNoticeSelection = (id) => {
+  if (selectedNoticeIds.value.includes(id)) {
+    selectedNoticeIds.value = selectedNoticeIds.value.filter(itemId => itemId !== id)
+  } else {
+    selectedNoticeIds.value = [...selectedNoticeIds.value, id]
+  }
+}
+
+const toggleSelectAllNotices = () => {
+  if (isAllCurrentNoticesSelected.value) {
+    selectedNoticeIds.value = []
+    return
+  }
+  selectedNoticeIds.value = noticeList.value.map(item => item.id)
+}
+
+const markSelectedNoticesRead = async () => {
+  if (selectedNoticeIds.value.length === 0) return
+  await axios.put(`${API}/notices/read`, {
+    username: user.username,
+    ids: selectedNoticeIds.value
+  })
+  selectedNoticeIds.value = []
+  await refreshNoticeData()
+}
+
+const deleteSelectedNotices = async () => {
+  if (selectedNoticeIds.value.length === 0) return
+  await axios.delete(`${API}/notices`, {
+    data: {
+      username: user.username,
+      ids: selectedNoticeIds.value
+    }
+  })
+  selectedNoticeIds.value = []
+  await refreshNoticeData()
+}
+
+const markSingleNoticeRead = async (id) => {
+  await axios.put(`${API}/notices/read`, {
+    username: user.username,
+    ids: [id]
+  })
+  await refreshNoticeData()
+}
+
+const deleteSingleNotice = async (id) => {
+  await axios.delete(`${API}/notices`, {
+    data: {
+      username: user.username,
+      ids: [id]
+    }
+  })
+  await refreshNoticeData()
+}
+
+const publishNotice = async () => {
+  if (user.role !== 'admin') return alert('仅管理员可操作')
+  if (!noticeForm.title.trim()) return alert('请填写通知标题')
+  if (!noticeForm.content.trim()) return alert('请填写通知内容')
+  const res = await axios.post(`${API}/notices`, {
+    operatorUsername: user.username,
+    title: noticeForm.title,
+    content: noticeForm.content,
+    level: noticeForm.level
+  })
+  if (!res.data.success) return alert(res.data.message || '通知发布失败')
+  noticeForm.title = ''
+  noticeForm.content = ''
+  noticeForm.level = 'INFO'
+  await refreshNoticeData()
 }
 
 const fetchData = async () => {
@@ -309,7 +649,7 @@ const fetchData = async () => {
 const doSearch = () => { page.value = 1; fetchData(); }
 const resetSearch = () => { searchQuery.keyword = ''; searchQuery.city = ''; doSearch(); }
 
-const refreshAll = () => { fetchData(); fetchPendingCount(); }
+const refreshAll = () => { fetchData(); fetchPendingCount(); refreshNoticeData(); }
 
 const submitAdd = async () => {
   if(!form.value.name) return alert('请填写称呼');
@@ -352,34 +692,119 @@ const updateShare = async (item) => {
 }
 
 const deleteSingle = async (id) => {
-  if(confirm('⛔ 危险操作：确定永久删除？删除后无法恢复！')) {
+  if(confirm('⛔ 危险操作：确定删除？删除后无法恢复！')) {
     await axios.delete(`${API}/surveys/${id}`);
     closeModal();
     refreshAll()
   }
 }
 
-const fetchUsers = async () => { const res = await axios.get(`${API}/users`); usersList.value = res.data }
+const fetchUsers = async () => {
+  if (user.role !== 'admin') return;
+  try {
+    const res = await axios.get(`${API}/users`, { params: { operatorUsername: user.username } });
+    usersList.value = res.data;
+    res.data.forEach((u) => {
+      if (!(u.id in userPasswordDraft)) userPasswordDraft[u.id] = '';
+    });
+  } catch (e) {
+    alert(getApiErrorMessage(e, '员工列表加载失败'));
+  }
+}
+
 const submitAddUser = async () => {
+  if (user.role !== 'admin') return alert('仅管理员可操作');
   if(!userForm.value.username) return alert('请填写账号');
+  if(!userForm.value.password) return alert('请填写初始密码');
   if(!confirm(`确认开通名为 [${userForm.value.username}] 的新员工账号吗？`)) return;
-  const res = await axios.post(`${API}/users`, userForm.value); alert(res.data);
-  userForm.value = { username: '', password: '', role: 'staff' }; fetchUsers()
+  try {
+    const encryptedPassword = await encryptPassword(userForm.value.password);
+    const res = await axios.post(`${API}/users`, {
+      username: userForm.value.username,
+      password: encryptedPassword,
+      role: userForm.value.role,
+      operatorUsername: user.username
+    });
+    alert(res.data);
+    userForm.value = { username: '', password: '', role: 'staff' };
+    userForm.value.password = '';
+    fetchUsers();
+  } catch (e) {
+    alert(getApiErrorMessage(e, '员工开通失败，请稍后重试'));
+  }
+}
+
+const updateStaffPassword = async (staff) => {
+  if (user.role !== 'admin') return alert('仅管理员可操作');
+  const newPassword = userPasswordDraft[staff.id];
+  if (!newPassword) return alert('请输入新密码');
+  if (newPassword.length < 6) return alert('新密码至少 6 位');
+  if (!confirm(`确认修改员工 [${staff.username}] 的密码吗？`)) return;
+
+  try {
+    const encryptedPassword = await encryptPassword(newPassword);
+    const res = await axios.put(`${API}/users/${staff.id}/password`, {
+      password: encryptedPassword,
+      operatorUsername: user.username
+    });
+    alert(res.data);
+    userPasswordDraft[staff.id] = '';
+  } catch (e) {
+    alert(getApiErrorMessage(e, '员工密码修改失败，请稍后重试'));
+  }
+}
+
+const deleteStaffUser = async (staff) => {
+  if (user.role !== 'admin') return alert('仅管理员可操作');
+  if (!confirm(`危险操作：确认删除员工账号 [${staff.username}] 吗？`)) return;
+  try {
+    const res = await axios.delete(`${API}/users/${staff.id}`, {
+      params: { operatorUsername: user.username }
+    });
+    alert(res.data);
+    delete userPasswordDraft[staff.id];
+    fetchUsers();
+  } catch (e) {
+    alert(getApiErrorMessage(e, '员工删除失败，请稍后重试'));
+  }
+}
+
+const buildRemarkPreview = (remarks) => {
+  const text = (remarks || '').trim()
+  if (!text) return '无备注'
+  const chars = Array.from(text)
+  return chars.length > 15 ? `${chars.slice(0, 15).join('')}...` : text
 }
 
 const stripTime = (d) => d ? d.split(' ')[0] : ''
 const isOverdue = (d) => d && new Date(d) < new Date()
-const logout = () => { if(confirm('确定要安全退出系统吗？')) { isLoggedIn.value = false; loginForm.password = ''; } }
+const logout = () => {
+  if(confirm('确定要安全退出系统吗？')) {
+    isLoggedIn.value = false
+    loginForm.password = ''
+    isMenuOpen.value = false
+    isNoticeCenterOpen.value = false
+    noticeList.value = []
+    noticeTickerList.value = []
+    tickerMessages.value = []
+    noticeUnreadCount.value = 0
+    selectedNoticeIds.value = []
+  }
+}
 
 onMounted(() => {
-  checkDevice();
-  window.addEventListener('resize', checkDevice);
+  checkDevice()
+  window.addEventListener('resize', checkDevice)
+  window.addEventListener('click', handleGlobalClick)
   if(isLoggedIn.value) refreshAll()
 })
-onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
+onUnmounted(() => {
+  window.removeEventListener('resize', checkDevice)
+  window.removeEventListener('click', handleGlobalClick)
+})
 </script>
 
-<style scoped>
+<style>
 :root {
   --bg-main: #f4f7fc;
   --bg-card: #ffffff;
@@ -395,7 +820,9 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   --danger: #be123c;
   --shadow: 0 16px 38px rgba(15, 23, 42, 0.12);
 }
+</style>
 
+<style scoped>
 * {
   box-sizing: border-box;
 }
@@ -418,29 +845,46 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 
 .login-wrapper {
   min-height: 100vh;
-  padding: 22px;
+  width: 100%;
+  padding: clamp(14px, 4vw, 28px);
   display: grid;
   place-items: center;
   background: linear-gradient(135deg, #0f172a 0%, #172554 48%, #0a3255 100%);
 }
 
 .login-box {
-  width: 100%;
-  max-width: 440px;
+  width: clamp(290px, 84vw, 440px);
   border-radius: 24px;
-  padding: 38px 34px;
+  padding: clamp(24px, 5vw, 38px) clamp(18px, 5vw, 34px);
   background: rgba(255, 255, 255, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.7);
   box-shadow: 0 26px 56px rgba(15, 23, 42, 0.35);
   animation: rise-in 0.48s ease both;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.input-group {
+  width: 100%;
+}
+
+.login-actions {
+  width: 100%;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
 }
 
 .mega-title {
   margin: 0;
-  font-size: clamp(28px, 5vw, 42px);
+  font-size: clamp(24px, 4.8vw, 36px);
   line-height: 1.16;
   letter-spacing: 0.01em;
   color: #0f172a;
+  text-align: center;
 }
 
 .sub-title {
@@ -448,6 +892,7 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   color: var(--ink-sub);
   font-size: 14px;
   letter-spacing: 0.08em;
+  text-align: center;
 }
 
 .heavy-input {
@@ -509,9 +954,40 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 
 .btn-login-action {
   width: 100%;
-  padding: 13px 14px;
-  font-size: 16px;
+  padding: 12px 14px;
+  font-size: 15px;
   font-weight: 700;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 55%, #1e40af 100%);
+  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.34);
+}
+
+.btn-login-action:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+
+.btn-login-action:active {
+  transform: translateY(0);
+  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.28);
+}
+
+.btn-forgot {
+  align-self: flex-end;
+  border: 0;
+  background: transparent;
+  color: #1e40af;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 4px 2px 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  transition: color 0.2s ease;
+}
+
+.btn-forgot:hover {
+  color: #1d4ed8;
 }
 
 .dashboard {
@@ -541,15 +1017,61 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   gap: 12px;
 }
 
+.menu-trigger-wrap {
+  position: relative;
+}
+
 .hamburger-btn {
   width: 36px;
   height: 36px;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  background: rgba(30, 41, 59, 0.78);
-  color: #dbeafe;
+  border: 1px solid rgba(148, 163, 184, 0.42);
+  background: rgba(30, 41, 59, 0.62);
+  color: #cbd5e1;
   cursor: pointer;
   font-size: 18px;
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.24);
+}
+
+.hamburger-btn:hover {
+  filter: brightness(1.02);
+  transform: translateY(-1px);
+}
+
+.menu-popover {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 176px;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  background: rgba(15, 23, 42, 0.95);
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.26);
+  padding: 8px;
+  display: grid;
+  gap: 6px;
+  z-index: 40;
+  transform-origin: top left;
+  animation: menu-drop-in 0.18s ease-out both;
+}
+
+.menu-popover button {
+  width: 100%;
+  border: 0;
+  border-radius: 10px;
+  text-align: left;
+  color: #d5deec;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.menu-popover button:hover,
+.menu-popover button.active {
+  color: #fff;
+  background: rgba(29, 78, 216, 0.32);
 }
 
 .brand-text {
@@ -574,91 +1096,104 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   padding: 3px 9px;
 }
 
+.btn-notice-icon {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(125, 211, 252, 0.42);
+  background: rgba(14, 116, 144, 0.28);
+  color: #ecfeff;
+  border-radius: 10px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.notice-dot {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #ef4444;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 0 5px;
+}
+
 .btn-logout-icon {
-  border: 1px solid rgba(248, 113, 113, 0.34);
-  background: rgba(185, 28, 28, 0.2);
+  border: 1px solid rgba(248, 113, 113, 0.38);
+  background: rgba(185, 28, 28, 0.25);
   color: #fee2e2;
   border-radius: 10px;
-  font-size: 14px;
-  padding: 7px 10px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  padding: 7px 12px;
   cursor: pointer;
-}
-
-.sidebar-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(2, 8, 23, 0.48);
-  z-index: 20;
-}
-
-.sidebar-drawer {
-  position: fixed;
-  top: 66px;
-  left: 0;
-  width: 232px;
-  height: calc(100vh - 66px);
-  padding: 14px 10px;
-  background: rgba(15, 23, 42, 0.95);
-  border-right: 1px solid rgba(148, 163, 184, 0.18);
-  z-index: 25;
-  overflow-y: auto;
-  transform: translateX(-100%);
-  transition: transform 0.25s ease;
-}
-
-.sidebar-drawer.drawer-open {
-  transform: translateX(0);
-}
-
-.menu {
-  display: grid;
-  gap: 8px;
-}
-
-.menu button {
-  width: 100%;
-  border: 0;
-  border-radius: 10px;
-  text-align: left;
-  color: #d5deec;
-  background: transparent;
-  font-size: 15px;
-  font-weight: 600;
-  padding: 11px 13px;
-  cursor: pointer;
-}
-
-.menu button:hover,
-.menu button.active {
-  color: #fff;
-  background: rgba(29, 78, 216, 0.24);
 }
 
 .main-body {
   margin-top: 66px;
   padding: 16px;
   width: 100%;
-  transition: margin-left 0.25s ease;
-}
-
-.body-shifted {
-  margin-left: 232px;
-  width: calc(100% - 232px);
 }
 
 .notify-bar {
-  margin-bottom: 12px;
-  border: 1px solid rgba(251, 146, 60, 0.45);
-  background: linear-gradient(90deg, rgba(254, 243, 199, 0.88), rgba(255, 255, 255, 0.95));
-  color: #9a3412;
+  margin-bottom: 14px;
+  border: 1px solid rgba(59, 130, 246, 0.32);
+  background: linear-gradient(90deg, rgba(219, 234, 254, 0.96), rgba(239, 246, 255, 0.96));
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow: hidden;
   animation: rise-in 0.45s ease both;
 }
 
-.pulse-text {
-  color: #b45309;
-  font-size: 17px;
+.notify-label {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 9px;
+}
+
+.notify-marquee {
+  flex: 1;
+  overflow: hidden;
+}
+
+.notify-track {
+  display: inline-flex;
+  align-items: center;
+  gap: 34px;
+  white-space: nowrap;
+  min-width: max-content;
+  animation: notice-marquee 24s linear infinite;
+}
+
+.notify-item {
+  color: #1e3a8a;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+@keyframes notice-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
 }
 
 .view-content {
@@ -777,16 +1312,26 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 .btn-search {
   padding: 11px 18px;
   font-weight: 700;
+  border: 1px solid #1d4ed8 !important;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.3) !important;
 }
 
 .btn-reset {
   border-radius: 12px;
-  border: 1px solid #d2dce8;
-  background: #eef3fb;
-  color: #1f3758;
+  border: 1px solid rgba(37, 99, 235, 0.5);
+  background: #dbeafe;
+  color: #1e40af;
   font-weight: 700;
   padding: 11px 16px;
   cursor: pointer;
+  transition: transform 0.16s ease, filter 0.2s ease;
+}
+
+.btn-reset:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.04);
 }
 
 .form-card {
@@ -821,6 +1366,18 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 .btn-add-fluid {
   padding: 11px 14px;
   font-weight: 700;
+  border: 1px solid #1d4ed8 !important;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.3) !important;
+}
+
+.search-actions .btn-search,
+.form-grid-fluid > .btn-add-fluid {
+  border: 1px solid #1d4ed8 !important;
+  background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+  color: #ffffff !important;
+  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.3) !important;
 }
 
 .btn-add-fluid.dark {
@@ -853,6 +1410,53 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   border-bottom: 1px solid #edf2f7;
   color: #334155;
   font-size: 14px;
+}
+
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: #0b4f63;
+  background: #cffafe;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.user-password-input {
+  width: 100%;
+  min-width: 170px;
+  border: 1px solid #d2dce8;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.user-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.btn-inline,
+.btn-inline-danger {
+  border: 0;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-inline {
+  color: #1e3a8a;
+  background: #dbeafe;
+}
+
+.btn-inline-danger {
+  color: #991b1b;
+  background: #fee2e2;
 }
 
 .clickable-row {
@@ -904,6 +1508,59 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   font-size: 13px;
 }
 
+.remark-inline {
+  position: relative;
+  margin-top: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  border: 1px dashed #dbe4ef;
+  background: #f8fafc;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.remark-inline-label {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.remark-inline-text {
+  color: #1e293b;
+  font-weight: 600;
+}
+
+.remark-inline.empty .remark-inline-text {
+  color: #94a3b8;
+  font-weight: 500;
+}
+
+.remark-hover-card {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 8px);
+  width: min(360px, 58vw);
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #cbd5e1;
+  background: #ffffff;
+  color: #0f172a;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.22);
+  opacity: 0;
+  transform: translateY(4px);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+  white-space: normal;
+  word-break: break-word;
+  z-index: 35;
+}
+
+.remark-inline:hover .remark-hover-card {
+  opacity: 1;
+  transform: translateY(0);
+}
+
 .text-orange {
   color: var(--accent);
 }
@@ -932,6 +1589,257 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 
 .btn-action-small:hover {
   background: #bfdbfe;
+}
+
+.notice-center-overlay {
+  z-index: 85;
+}
+
+.notice-center-panel {
+  width: min(860px, 100%);
+  max-height: 92vh;
+  border-radius: 18px;
+  border: 1px solid #dbe4ef;
+  background: #fff;
+  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.34);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.notice-center-header {
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.notice-center-title {
+  margin: 0;
+  font-size: 18px;
+  color: #0f172a;
+}
+
+.notice-center-body {
+  padding: 14px 18px 18px;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+}
+
+.notice-filter-tabs {
+  display: inline-flex;
+  border-radius: 12px;
+  background: #eff6ff;
+  padding: 4px;
+  gap: 3px;
+}
+
+.notice-filter-tabs button {
+  border: 0;
+  border-radius: 9px;
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e3a8a;
+  background: transparent;
+  cursor: pointer;
+}
+
+.notice-filter-tabs button.active {
+  background: #fff;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
+}
+
+.notice-batch-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #f8fafc;
+}
+
+.notice-check-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #334155;
+}
+
+.notice-selected-count {
+  color: #475569;
+  font-size: 13px;
+}
+
+.notice-action-btn {
+  border: 0;
+  border-radius: 10px;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 7px 11px;
+  cursor: pointer;
+}
+
+.notice-action-btn.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.notice-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.notice-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notice-row {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: #fff;
+}
+
+.notice-row-check {
+  padding-top: 2px;
+}
+
+.notice-row-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.notice-row-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.notice-level {
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.notice-level.info {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.notice-level.warn {
+  background: #fef3c7;
+  color: #b45309;
+}
+
+.notice-level.alert {
+  background: #fee2e2;
+  color: #be123c;
+}
+
+.notice-row-title {
+  color: #0f172a;
+  font-size: 14px;
+}
+
+.notice-row-time {
+  margin-left: auto;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.notice-row-text {
+  margin: 6px 0;
+  color: #334155;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.notice-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notice-inline-btn {
+  border: 0;
+  border-radius: 8px;
+  background: #dbeafe;
+  color: #1e3a8a;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 5px 9px;
+  cursor: pointer;
+}
+
+.notice-inline-btn.danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.notice-read-flag {
+  font-size: 12px;
+  color: #0f766e;
+  font-weight: 700;
+}
+
+.notice-empty {
+  text-align: center;
+  color: #94a3b8;
+  border: 1px dashed #cbd5e1;
+  border-radius: 12px;
+  padding: 24px 12px;
+}
+
+.notice-pager {
+  margin: 4px 0 0;
+}
+
+.notice-create-box {
+  border-radius: 14px;
+  border: 1px solid #dbe4ef;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.notice-create-title {
+  margin: 0 0 10px;
+  color: #0f172a;
+  font-size: 15px;
+}
+
+.notice-create-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.notice-create-grid input,
+.notice-create-grid select,
+.notice-create-grid textarea {
+  border: 1px solid #d2dce8;
+  border-radius: 10px;
+  background: #fff;
+  padding: 9px 11px;
+  font-size: 13px;
+}
+
+.notice-create-grid textarea {
+  min-height: 88px;
+  resize: vertical;
 }
 
 .modal-overlay {
@@ -973,12 +1881,17 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 
 .btn-close {
   border: 0;
-  background: #e2e8f0;
-  color: #334155;
+  background: #dbeafe;
+  color: #1e3a8a;
   width: 30px;
   height: 30px;
   border-radius: 9px;
   cursor: pointer;
+  font-weight: 700;
+}
+
+.btn-close:hover {
+  background: #bfdbfe;
 }
 
 .modal-body {
@@ -1021,6 +1934,36 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   font-weight: 600;
 }
 
+.focus-card {
+  border-color: #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff, #f8fafc);
+}
+
+.focus-card .lbl {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
+.focus-card .focus-val {
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.budget-card .focus-val {
+  color: #b45309;
+}
+
+.focus-remarks {
+  border-color: #bfdbfe;
+  background: linear-gradient(180deg, #eff6ff 0%, #f8fafc 100%);
+}
+
+.focus-remarks .lbl {
+  color: #1d4ed8;
+  font-weight: 700;
+}
+
 .remarks-header {
   display: flex;
   align-items: center;
@@ -1043,7 +1986,7 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 
 .text-area-sim {
   width: 100%;
-  min-height: 92px;
+  min-height: 116px;
   border: 1px solid #d2dce8;
   border-radius: 12px;
   padding: 11px 12px;
@@ -1153,17 +2096,24 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
 }
 
 .pager-fluid button {
-  border: 1px solid #d2dce8;
-  background: #fff;
-  color: #0f172a;
+  border: 1px solid rgba(37, 99, 235, 0.38);
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  color: #fff;
   font-weight: 700;
   border-radius: 10px;
   padding: 8px 13px;
   cursor: pointer;
+  transition: transform 0.16s ease, filter 0.2s ease;
+}
+
+.pager-fluid button:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
 }
 
 .pager-fluid button:disabled {
-  opacity: 0.45;
+  opacity: 0.55;
+  filter: grayscale(0.35);
   cursor: not-allowed;
 }
 
@@ -1175,6 +2125,17 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   to {
     opacity: 1;
     transform: translateY(0);
+  }
+}
+
+@keyframes menu-drop-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
   }
 }
 
@@ -1203,19 +2164,14 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
     height: 60px;
   }
 
-  .sidebar-drawer {
-    top: 60px;
-    height: calc(100vh - 60px);
+  .menu-popover {
+    top: calc(100% + 6px);
+    min-width: 160px;
   }
 
   .main-body {
     margin-top: 60px;
     padding: 14px;
-  }
-
-  .body-shifted {
-    margin-left: 0;
-    width: 100%;
   }
 
   .header-tools {
@@ -1253,6 +2209,24 @@ onUnmounted(() => { window.removeEventListener('resize', checkDevice); })
   .share-group {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .notice-center-body {
+    padding: 12px;
+  }
+
+  .notice-batch-tools {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .notice-row-time {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .notice-row-actions {
+    flex-wrap: wrap;
   }
 }
 </style>
