@@ -1,0 +1,22 @@
+# Build output
+target/
+**/target/
+
+# IDE and editor files
+.idea/
+**/.idea/
+*.iml
+.vscode/
+
+# Local application configuration
+xyyx/src/main/resources/application.properties
+xyyx/src/main/resources/application-*.properties
+!xyyx/src/main/resources/application-example.properties
+
+# Logs and runtime files
+*.log
+logs/
+
+# OS files
+.DS_Store
+Thumbs.db

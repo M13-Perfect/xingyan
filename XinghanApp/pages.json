@@ -1,0 +1,82 @@
+{
+  "pages": [
+    {
+      "path": "pages/index/index",
+      "style": {
+        "navigationBarTitleText": "星瀚影视",
+        "enablePullDownRefresh": true,
+        "navigationBarBackgroundColor": "#111114",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/video/category",
+      "style": {
+        "navigationBarTitleText": "分类检索",
+        "navigationStyle": "custom",
+        "navigationBarBackgroundColor": "#111114",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/video/detail",
+      "style": {
+        "navigationBarTitleText": "影片详情",
+        "navigationStyle": "custom",
+        "navigationBarBackgroundColor": "#111114"
+      }
+    },
+    {
+      "path": "pages/video/play",
+      "style": {
+        "navigationBarTitleText": "视频播放",
+        "navigationStyle": "custom",
+        "navigationBarBackgroundColor": "#000000"
+      }
+    },
+    {
+      "path": "pages/login/login",
+      "style": {
+        "navigationBarTitleText": "登录 / 注册",
+        "navigationBarBackgroundColor": "#111114",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/login/forgot_password",
+      "style": {
+        "navigationBarTitleText": "重置密码",
+        "navigationBarBackgroundColor": "#111114",
+        "navigationBarTextStyle": "white"
+      }
+    },
+    {
+      "path": "pages/user/user",
+      "style": {
+        "navigationBarTitleText": "个人中心",
+        "navigationBarBackgroundColor": "#111114",
+        "navigationBarTextStyle": "white"
+      }
+    }
+  ],
+  "subPackages": [
+    {
+      "root": "pages_admin",
+      "pages": [
+        {
+          "path": "dashboard/index",
+          "style": {
+            "navigationBarTitleText": "管理控制台",
+            "navigationBarBackgroundColor": "#1e1e2d",
+            "navigationBarTextStyle": "white"
+          }
+        }
+      ]
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "white",
+    "navigationBarBackgroundColor": "#111114",
+    "backgroundColor": "#111114"
+  }
+}
