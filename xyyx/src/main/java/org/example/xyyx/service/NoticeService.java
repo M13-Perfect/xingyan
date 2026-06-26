@@ -21,8 +21,8 @@ public class NoticeService {
         this.jdbcTemplate = jdbcTemplate;
     }
 
-    public void createNotice(String operatorUsername, String title, String content, String level) {
-        ensureAdmin(operatorUsername);
+    public void createNotice(String adminUsername, String title, String content, String level) {
+        ensureAdmin(adminUsername);
         String safeTitle = trimToNull(title);
         String safeContent = trimToNull(content);
         if (safeTitle == null || safeContent == null) {
@@ -34,7 +34,7 @@ public class NoticeService {
                 safeTitle,
                 safeContent,
                 safeLevel,
-                operatorUsername
+                adminUsername
         );
     }
 
@@ -152,8 +152,8 @@ public class NoticeService {
         return affected;
     }
 
-    private void ensureAdmin(String operatorUsername) {
-        String safeUser = trimToNull(operatorUsername);
+    private void ensureAdmin(String adminUsername) {
+        String safeUser = trimToNull(adminUsername);
         if (safeUser == null) {
             throw new IllegalArgumentException("missing admin identity");
         }

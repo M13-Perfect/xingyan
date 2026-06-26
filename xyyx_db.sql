@@ -44,6 +44,7 @@ CREATE TABLE `survey` (
   `city` varchar(50) NOT NULL DEFAULT '-',
   `project` varchar(100) NOT NULL DEFAULT '-',
   `wechat` varchar(50) DEFAULT NULL,
+  `social_account` varchar(100) DEFAULT NULL,
   `budget` varchar(50) NOT NULL DEFAULT '-',
   `owner` varchar(50) DEFAULT NULL,
   `remarks` text,

@@ -3,13 +3,15 @@ package org.example.xyyx.controller;
 import org.example.xyyx.entity.Survey;
 import org.example.xyyx.mapper.SurveyMapper;
 import org.example.xyyx.service.CryptoService;
+import org.example.xyyx.service.CurrentUserService;
+import org.example.xyyx.service.CurrentUserService.CurrentUser;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DuplicateKeyException;
-import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.server.ResponseStatusException;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -30,6 +32,8 @@ public class SurveyController {
     private CryptoService cryptoService;
     @Autowired
     private PasswordEncoder passwordEncoder;
+    @Autowired
+    private CurrentUserService currentUserService;
 
     @GetMapping("/security/public-key")
     public Map<String, Object> getPublicKey() {
@@ -84,14 +88,14 @@ public class SurveyController {
     }
 
     @GetMapping("/users")
-    public List<Map<String, Object>> getUsers(@RequestParam String operatorUsername) {
-        ensureAdminOperator(operatorUsername);
+    public List<Map<String, Object>> getUsers(@AuthenticationPrincipal Jwt jwt) {
+        currentUserService.requireAdmin(jwt);
         return jdbcTemplate.queryForList("SELECT id, username, role FROM user WHERE role != 'admin'");
     }
 
     @PostMapping("/users")
-    public String addUser(@RequestBody Map<String, String> payload) {
-        ensureAdminOperator(payload.get("operatorUsername"));
+    public String addUser(@AuthenticationPrincipal Jwt jwt, @RequestBody Map<String, String> payload) {
+        currentUserService.requireAdmin(jwt);
         String username = payload.get("username");
         String encryptedPassword = payload.get("password");
         String role = payload.getOrDefault("role", "staff");
@@ -117,8 +121,10 @@ public class SurveyController {
     }
 
     @DeleteMapping("/users/{id}")
-    public String deleteUser(@PathVariable Long id, @RequestParam String operatorUsername) {
-        ensureAdminOperator(operatorUsername);
+    public String deleteUser(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long id) {
+        currentUserService.requireAdmin(jwt);
         List<Map<String, Object>> targetUsers = jdbcTemplate.queryForList("SELECT role FROM user WHERE id = ?", id);
         if (targetUsers.isEmpty()) return "员工不存在";
         if ("admin".equals(asString(targetUsers.get(0).get("role")))) return "禁止删除管理员账号";
@@ -128,8 +134,11 @@ public class SurveyController {
     }
 
     @PutMapping("/users/{id}/password")
-    public String updateUserPassword(@PathVariable Long id, @RequestBody Map<String, String> payload) {
-        ensureAdminOperator(payload.get("operatorUsername"));
+    public String updateUserPassword(
+            @AuthenticationPrincipal Jwt jwt,
+            @PathVariable Long id,
+            @RequestBody Map<String, String> payload) {
+        currentUserService.requireAdmin(jwt);
         String encryptedPassword = payload.get("password");
         if (encryptedPassword == null || encryptedPassword.isBlank()) return "新密码不能为空";
 
@@ -151,23 +160,23 @@ public class SurveyController {
     }
 
     @GetMapping("/surveys/pending-count")
-    public int getPendingCount(@RequestParam String username, @RequestParam String role) {
-        if ("admin".equals(role)) {
+    public int getPendingCount(@AuthenticationPrincipal Jwt jwt) {
+        CurrentUser currentUser = currentUserService.requireUser(jwt);
+        if (currentUser.isAdmin()) {
             return jdbcTemplate.queryForObject("SELECT COUNT(*) FROM survey WHERE status = '未处理'", Integer.class);
         } else {
             return jdbcTemplate.queryForObject(
                     "SELECT COUNT(*) FROM survey WHERE status = '未处理' AND (owner = ? OR visibility = 'PUBLIC' OR FIND_IN_SET(?, shared_users) > 0)",
                     Integer.class,
-                    username,
-                    username
+                    currentUser.username(),
+                    currentUser.username()
             );
         }
     }
 
     @GetMapping("/surveys")
     public Map<String, Object> getSurveys(
-            @RequestParam String username,
-            @RequestParam String role,
+            @AuthenticationPrincipal Jwt jwt,
             @RequestParam(required = false) String status,
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String city,
@@ -178,13 +187,14 @@ public class SurveyController {
         List<Survey> list;
         int total;
         String queryStatus = ("全部".equals(status) || status == null || status.isEmpty()) ? null : status;
+        CurrentUser currentUser = currentUserService.requireUser(jwt);
 
-        if ("admin".equals(role)) {
+        if (currentUser.isAdmin()) {
             list = surveyMapper.selectAdminPaged(queryStatus, keyword, city, size, offset);
             total = surveyMapper.countAdmin(queryStatus, keyword, city);
         } else {
-            list = surveyMapper.selectStaffPaged(username, queryStatus, keyword, city, size, offset);
-            total = surveyMapper.countStaff(username, queryStatus, keyword, city);
+            list = surveyMapper.selectStaffPaged(currentUser.username(), queryStatus, keyword, city, size, offset);
+            total = surveyMapper.countStaff(currentUser.username(), queryStatus, keyword, city);
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -195,18 +205,20 @@ public class SurveyController {
     }
 
     @PostMapping("/surveys")
-    public Map<String, Object> addSurvey(@RequestBody Map<String, Object> params) {
+    public Map<String, Object> addSurvey(@AuthenticationPrincipal Jwt jwt, @RequestBody Map<String, Object> params) {
         Map<String, Object> res = new HashMap<>();
         try {
+            CurrentUser currentUser = currentUserService.requireUser(jwt);
             Survey s = new Survey();
             s.setName((String) params.get("name"));
             s.setPhone(params.get("phone") != null && !params.get("phone").toString().isEmpty() ? params.get("phone").toString() : null);
             s.setWechat(params.get("wechat") != null && !params.get("wechat").toString().isEmpty() ? params.get("wechat").toString() : null);
+            s.setSocialAccount(params.get("socialAccount") != null && !params.get("socialAccount").toString().isEmpty() ? params.get("socialAccount").toString() : null);
             s.setCity((String) params.get("city"));
             s.setProject((String) params.get("project"));
             s.setBudget((String) params.get("budget"));
             s.setRemarks((String) params.get("remarks"));
-            s.setOwner((String) params.get("owner"));
+            s.setOwner(currentUser.username());
             int days = Integer.parseInt(params.getOrDefault("remindDays", 3).toString());
             s.setNextSurveyDate(LocalDateTime.now().plusDays(days));
             surveyMapper.insert(s);
@@ -253,20 +265,6 @@ public class SurveyController {
     public String updateRemarks(@PathVariable Long id, @RequestBody Map<String, String> payload) {
         surveyMapper.updateRemarks(id, payload.get("remarks"));
         return "备注保存成功";
-    }
-
-    private void ensureAdminOperator(String operatorUsername) {
-        if (operatorUsername == null || operatorUsername.isBlank()) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权限：缺少管理员身份");
-        }
-        List<String> roles = jdbcTemplate.queryForList(
-                "SELECT role FROM user WHERE username = ?",
-                String.class,
-                operatorUsername
-        );
-        if (roles.isEmpty() || !"admin".equals(roles.get(0))) {
-            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "无权限：仅管理员可执行");
-        }
     }
 
     private String asString(Object value) {

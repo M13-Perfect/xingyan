@@ -16,6 +16,8 @@ xyyx/src/main/resources/application-*.properties
 # Logs and runtime files
 *.log
 logs/
+.claude/session-log.md
+.docker-tmp/
 
 # OS files
 .DS_Store

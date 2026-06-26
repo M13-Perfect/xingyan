@@ -1,38 +1,95 @@
 ﻿<template>
   <div class="app-container">
     <div v-if="!isLoggedIn" class="login-wrapper">
-      <div class="login-box">
-        <h1 class="mega-title">序界回访管理系统</h1>
-        <h3 class="sub-title">序界数据终端</h3>
-        <div class="input-group">
-          <input v-model="loginForm.username" placeholder="请输入您的账号" class="heavy-input text-black">
-          <input v-model="loginForm.password" type="password" placeholder="请输入您的密码" class="heavy-input text-black" @keyup.enter="handleLogin">
-        </div>
-        <div class="login-actions">
-          <button @click="handleLogin" class="btn-login-action">安全登录</button>
-          <button type="button" class="btn-forgot" @click="handleForgotPassword">忘记密码</button>
-        </div>
-      </div>
+      <section class="login-shell" aria-labelledby="login-title">
+        <header class="login-header">
+          <p class="login-kicker">序界数据终端</p>
+          <h1 id="login-title" class="mega-title">序界回访管理系统</h1>
+        </header>
+
+        <form class="login-form" @submit.prevent="handleLogin">
+          <label class="login-field" for="login-username">
+            <span>账号</span>
+            <input
+              id="login-username"
+              v-model.trim="loginForm.username"
+              class="login-input text-black"
+              autocomplete="username"
+              placeholder="请输入账号"
+            >
+          </label>
+          <label class="login-field" for="login-password">
+            <span>密码</span>
+            <div class="password-control">
+              <input
+                id="login-password"
+                v-model="loginForm.password"
+                class="login-input text-black"
+                :type="isPasswordVisible ? 'text' : 'password'"
+                autocomplete="current-password"
+                placeholder="请输入密码"
+              >
+              <button
+                type="button"
+                class="password-toggle"
+                :aria-label="isPasswordVisible ? '隐藏密码' : '显示密码'"
+                @click="isPasswordVisible = !isPasswordVisible"
+              >
+                <svg
+                  v-if="!isPasswordVisible"
+                  class="password-toggle-icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M3 12s3.4-6 9-6 9 6 9 6-3.4 6-9 6-9-6-9-6Z" />
+                  <circle cx="12" cy="12" r="2.6" />
+                </svg>
+                <svg
+                  v-else
+                  class="password-toggle-icon"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path d="M4 13c2.1 2.7 4.8 4 8 4s5.9-1.3 8-4" />
+                  <path d="M7.5 16.2 6 18" />
+                  <path d="M12 17v2" />
+                  <path d="m16.5 16.2 1.5 1.8" />
+                </svg>
+              </button>
+            </div>
+          </label>
+          <div class="login-status" aria-live="polite">{{ loginStatus }}</div>
+          <button type="submit" class="btn-login-action" :disabled="isLoginSubmitting" :aria-busy="isLoginSubmitting">
+            {{ isLoginSubmitting ? '登录中...' : '登录' }}
+          </button>
+        </form>
+
+        <footer class="login-footer">© 2026 序界回访管理系统 版权所有</footer>
+      </section>
     </div>
 
     <div v-else class="dashboard">
 
       <header class="top-taskbar">
         <div class="taskbar-left">
-          <div class="menu-trigger-wrap">
-            <button class="hamburger-btn" @click.stop="toggleMenuPanel" title="展开/收起菜单">☰</button>
+          <div class="menu-trigger-wrap mobile-menu">
+            <button class="hamburger-btn" @click.stop="toggleMenuPanel" title="展开/收起菜单">菜单</button>
             <div class="menu-popover" v-if="isMenuOpen" @click.stop>
-              <button :class="{active: view === 'work'}" @click="switchView('work')">📝 工作台</button>
-              <button v-if="user.role === 'admin'" :class="{active: view === 'users'}" @click="switchView('users')">👥 员工管理</button>
+              <button :class="{active: view === 'work'}" @click="switchView('work')">工作台</button>
+              <button v-if="user.role === 'admin'" :class="{active: view === 'users'}" @click="switchView('users')">员工管理</button>
             </div>
           </div>
           <span class="brand-text">序界客户回访系统</span>
+          <nav class="desktop-nav" aria-label="主导航">
+            <button :class="{active: view === 'work'}" @click="switchView('work')">工作台</button>
+            <button v-if="user.role === 'admin'" :class="{active: view === 'users'}" @click="switchView('users')">员工管理</button>
+          </nav>
         </div>
         <div class="taskbar-right">
           <span class="user-name">{{ user.username }}</span>
           <span class="role-tag hide-on-mobile">{{ user.role === 'admin' ? '管理员' : '专员' }}</span>
           <button class="btn-notice-icon" @click="toggleNoticeCenter" title="通知中心">
-            <span>🔔</span>
+            <span>通知</span>
             <span v-if="noticeUnreadCount > 0" class="notice-dot">{{ noticeUnreadCount > 99 ? '99+' : noticeUnreadCount }}</span>
           </button>
           <button class="btn-logout-icon" @click="logout" title="退出登录">退出</button>
@@ -56,7 +113,7 @@
           <header class="page-header">
             <h2 class="white-text">数据流转中心</h2>
             <div class="header-tools">
-              <button @click="refreshAll" class="btn-refresh">🔄 刷新数据</button>
+              <button @click="refreshAll" class="btn-refresh">刷新数据</button>
               <div class="tab-group-container">
                 <div class="tab-group">
                   <button :class="{active: listStatus==='未处理'}" @click="listStatus='未处理';doSearch()">待处理</button>
@@ -69,8 +126,8 @@
 
           <div class="search-filter-bar">
             <div class="search-inputs">
-              <input v-model="searchQuery.keyword" placeholder="🔍 搜索称呼 / 电话 / 微信 / 项目..." class="search-input text-black" @keyup.enter="doSearch">
-              <input v-model="searchQuery.city" placeholder="🏙️ 按城市筛选..." class="search-input text-black" @keyup.enter="doSearch">
+              <input v-model="searchQuery.keyword" placeholder="搜索称呼 / 电话 / 微信 / 社交账号 / 项目" class="search-input text-black" @keyup.enter="doSearch">
+              <input v-model="searchQuery.city" placeholder="按城市筛选" class="search-input text-black" @keyup.enter="doSearch">
             </div>
             <div class="search-actions">
               <button @click="doSearch" class="btn-search">查询</button>
@@ -85,6 +142,7 @@
               <input v-model="form.phone" placeholder="电话 (不可重复)" class="text-black">
               <input v-model="form.wechat" placeholder="微信 (不可重复)" class="text-black">
               <input v-model="form.city" placeholder="城市" class="text-black">
+              <input v-model="form.socialAccount" placeholder="社交账号" class="text-black">
               <input v-model="form.project" placeholder="项目" class="text-black">
               <input v-model="form.budget" placeholder="预算" class="text-black">
               <input v-model="form.remarks" placeholder="需求备注" class="text-black remarks-input span-full-width">
@@ -111,12 +169,13 @@
                 </td>
                 <td class="bold highlight-text">{{ item.name }}</td>
                 <td>
-                  <div class="contact-line">📞 <span class="text-black">{{ item.phone || '无' }}</span></div>
-                  <div class="contact-line">💬 <span class="text-black">{{ item.wechat || '无' }}</span></div>
+                  <div class="contact-line">电话：<span class="text-black">{{ item.phone || '无' }}</span></div>
+                  <div class="contact-line">微信：<span class="text-black">{{ item.wechat || '无' }}</span></div>
+                  <div class="contact-line">社交账号：<span class="text-black">{{ item.socialAccount || '无' }}</span></div>
                 </td>
                 <td>
-                  <div class="text-black">🏙️ {{ item.city || '未知' }}</div>
-                  <div class="text-orange font-bold">📦 {{ item.project || '无' }}</div>
+                  <div class="text-black">城市：{{ item.city || '未知' }}</div>
+                  <div class="text-orange font-bold">项目：{{ item.project || '无' }}</div>
                   <div class="remark-inline" :class="{ empty: !item.remarks }">
                     <span class="remark-inline-label">备注：</span>
                     <span class="remark-inline-text">{{ buildRemarkPreview(item.remarks) }}</span>
@@ -124,7 +183,7 @@
                   </div>
                 </td>
                 <td @click.stop>
-                  <button v-if="item.status==='未处理'" @click="processTask(item.id)" class="btn-action-small">✅ 完成处理</button>
+                  <button v-if="item.status==='未处理'" @click="processTask(item.id)" class="btn-action-small">完成处理</button>
                   <span v-else class="text-muted">已归档</span>
                 </td>
               </tr>
@@ -189,7 +248,7 @@
         <div class="notice-center-panel">
           <header class="notice-center-header">
             <h3 class="notice-center-title">通知中心</h3>
-            <button class="btn-close" @click="closeNoticeCenter" title="关闭">✖</button>
+            <button class="btn-close" @click="closeNoticeCenter" title="关闭">关闭</button>
           </header>
 
           <div class="notice-center-body">
@@ -261,7 +320,7 @@
 
         <header class="modal-header">
           <h3 class="modal-title">📄 客户档案详情</h3>
-          <button class="btn-close" @click="closeModal" title="关闭">✖</button>
+          <button class="btn-close" @click="closeModal" title="关闭">关闭</button>
         </header>
 
         <div class="modal-body">
@@ -290,6 +349,7 @@
             <div class="m-item"><span class="lbl">电话:</span> <span class="val text-black">{{ selectedSurvey.phone || '无' }}</span></div>
             <div class="m-item"><span class="lbl">微信:</span> <span class="val text-black">{{ selectedSurvey.wechat || '无' }}</span></div>
             <div class="m-item"><span class="lbl">城市:</span> <span class="val text-black">{{ selectedSurvey.city || '未填写' }}</span></div>
+            <div class="m-item"><span class="lbl">社交账号:</span> <span class="val text-black">{{ selectedSurvey.socialAccount || '未填写' }}</span></div>
 
             <div class="m-item full-width reminder-row-modal">
               <span class="lbl text-danger">⏱️ 设置下次提醒:</span>
@@ -298,7 +358,7 @@
           </div>
 
           <div class="admin-panel-fluid mt-3" v-if="user.role === 'admin'">
-            <div class="admin-info">👤 录入人: <b class="text-black">{{ selectedSurvey.owner }}</b> &nbsp;|&nbsp; 🕒 {{ selectedSurvey.createTime }}</div>
+            <div class="admin-info">录入人: <b class="text-black">{{ selectedSurvey.owner }}</b> &nbsp;|&nbsp; {{ selectedSurvey.createTime }}</div>
             <div class="admin-controls-fluid mt-2">
               <div class="share-group">
                 <label>可见权限:</label>
@@ -316,7 +376,7 @@
         </div>
 
         <footer class="modal-footer" v-if="selectedSurvey.status==='未处理'">
-          <button @click="processTask(selectedSurvey.id); closeModal()" class="btn-action w-full">✅ 标记为完成处理</button>
+          <button @click="processTask(selectedSurvey.id); closeModal()" class="btn-action w-full">标记为完成处理</button>
         </footer>
       </div>
     </div>
@@ -327,15 +387,45 @@
 <script setup>
 import { computed, ref, reactive, onMounted, onUnmounted } from 'vue'
 import axios from 'axios'
+import {
+  buildCasdoorLoginQuery,
+  buildDiscoveryUrl,
+  buildTokenRequestBody,
+  clearAuthTransaction,
+  consumeAuthTransaction,
+  createAuthTransaction,
+  sanitizeReturnTo
+} from './auth/oidc.js'
 
 const API = '/api'
+const casdoorBaseUrl = import.meta.env.VITE_CASDOOR_ENDPOINT || import.meta.env.VITE_CASDOOR_BASE_URL || 'http://localhost:8000'
+const casdoorApplicationName = import.meta.env.VITE_CASDOOR_APPLICATION_NAME || ''
+const casdoorClientId = import.meta.env.VITE_CASDOOR_CLIENT_ID || 'xyyx-web'
+const casdoorRedirectUri = import.meta.env.VITE_CASDOOR_REDIRECT_URI || `${window.location.origin}/auth/callback`
+const casdoorScopes = import.meta.env.VITE_CASDOOR_SCOPES || 'openid profile email'
+const ACCESS_TOKEN_KEY = 'xyyx.casdoor.access_token'
+const REFRESH_TOKEN_KEY = 'xyyx.casdoor.refresh_token'
+const PUBLIC_PATHS = new Set(['/login', '/auth/callback'])
+const DISABLED_AUTH_PATHS = new Set(['/signup', '/register', '/forget', '/consent', '/prompt', '/account'])
+
 const isLoggedIn = ref(false)
 const user = reactive({ username: '', role: '' })
 const loginForm = reactive({ username: '', password: '' })
+const loginStatus = ref('')
+const isLoginSubmitting = ref(false)
+const isPasswordVisible = ref(false)
 const view = ref('work')
 const textEncoder = new TextEncoder()
 
-const isMobile = ref(false)
+axios.interceptors.request.use((config) => {
+  const token = sessionStorage.getItem(ACCESS_TOKEN_KEY)
+  if (token && typeof config.url === 'string' && config.url.startsWith(API)) {
+    config.headers = config.headers || {}
+    config.headers.Authorization = `Bearer ${token}`
+  }
+  return config
+})
+
 const isMenuOpen = ref(false)
 
 const selectedSurvey = ref(null)
@@ -347,7 +437,7 @@ const searchQuery = reactive({ keyword: '', city: '' })
 const listStatus = ref('未处理')
 const surveys = ref([])
 const pendingCount = ref(0)
-const form = ref({ name: '', phone: '', wechat: '', city: '', project: '', budget: '', remarks: '', remindDays: 3 })
+const form = ref({ name: '', phone: '', wechat: '', city: '', socialAccount: '', project: '', budget: '', remarks: '', remindDays: 3 })
 const page = ref(1); const totalPages = ref(1); const totalCount = ref(0)
 const todayDate = new Date().toISOString().split('T')[0]
 const usersList = ref([])
@@ -407,12 +497,6 @@ const encryptPassword = async (plainText) => {
   return arrayBufferToBase64(encrypted)
 }
 
-const checkDevice = () => {
-  const ua = navigator.userAgent
-  const isMobileUA = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(ua)
-  const isSmallScreen = window.innerWidth <= 1024
-  isMobile.value = isMobileUA || isSmallScreen
-}
 const toggleMenuPanel = () => { isMenuOpen.value = !isMenuOpen.value }
 const switchView = (v) => {
   view.value = v
@@ -432,7 +516,7 @@ const getRequestErrorMessage = (error, fallback = '服务器网络异常，请�
     if (error.response) {
       const status = error.response.status
       if (status >= 500) return `登录失败：后端服务异常（HTTP ${status}）`
-      if (status === 401 || status === 403) return '登录失败：账号或密码错误'
+      if (status === 401 || status === 403) return '登录失败：Casdoor Token 未通过业务系统校验'
       return `登录失败：请求异常（HTTP ${status}）`
     }
     if (error.request) return '登录失败：无法连接服务器，请确认后端服务已启动'
@@ -449,34 +533,188 @@ const getApiErrorMessage = (error, fallback) => {
   return fallback
 }
 
-const handleLogin = async () => {
-  if(!loginForm.username) return alert('请输入账号');
-  if(!loginForm.password) return alert('请输入密码');
-  try {
-    const encryptedPassword = await encryptPassword(loginForm.password)
-    const res = await axios.post(`${API}/login`, {
-      username: loginForm.username,
-      password: encryptedPassword
-    })
-    if(res.data.success) {
-      isLoggedIn.value = true; user.username = res.data.username; user.role = res.data.role
-      loginForm.password = ''
-      view.value = 'work'; listStatus.value = '未处理';
-      checkDevice();
-      await fetchPendingCount();
-      await refreshNoticeData();
-      alert(`登录成功！\n目前有 ${pendingCount.value} 条待处理数据。`);
-      fetchData()
-    } else { alert(res.data.message) }
-  } catch (e) { alert(getRequestErrorMessage(e)) }
+const clearAuthStorage = () => {
+  sessionStorage.removeItem(ACCESS_TOKEN_KEY)
+  sessionStorage.removeItem(REFRESH_TOKEN_KEY)
+  clearAuthTransaction()
 }
 
-const handleForgotPassword = () => {
-  alert('请联系系统管理员进行密码重置。')
+const getOidcMetadata = async () => {
+  const discoveryUrl = buildDiscoveryUrl(casdoorBaseUrl, casdoorApplicationName)
+  const res = await axios.get(discoveryUrl, { headers: { Accept: 'application/json' } })
+  return res.data
+}
+
+const getCurrentInternalPath = () => {
+  const path = `${window.location.pathname}${window.location.search}${window.location.hash}`
+  if (PUBLIC_PATHS.has(window.location.pathname) || DISABLED_AUTH_PATHS.has(window.location.pathname)) return '/'
+  return sanitizeReturnTo(path)
+}
+
+const getLoginReturnTo = () => {
+  const url = new URL(document.location.toString())
+  return sanitizeReturnTo(url.searchParams.get('returnTo') || '/')
+}
+
+const replaceRoute = (path) => {
+  window.history.replaceState({}, document.title, path)
+}
+
+const replaceWithLogin = (returnTo = getCurrentInternalPath()) => {
+  replaceRoute(`/login?returnTo=${encodeURIComponent(sanitizeReturnTo(returnTo))}`)
+}
+
+const getCasdoorApplication = async (transaction) => {
+  const query = buildCasdoorLoginQuery({
+    clientId: casdoorClientId,
+    redirectUri: casdoorRedirectUri,
+    scope: casdoorScopes,
+    transaction
+  })
+  const res = await axios.get(`${casdoorBaseUrl}/api/get-app-login?${query.toString()}`, {
+    withCredentials: true,
+    headers: { Accept: 'application/json' }
+  })
+  if (res.data?.status !== 'ok' || !res.data?.data) {
+    throw new Error(res.data?.msg || 'Casdoor 应用配置不可用')
+  }
+  return res.data.data
+}
+
+const extractCasdoorCode = (loginResult) => {
+  if (loginResult?.status !== 'ok') {
+    throw new Error(loginResult?.msg || '账号或密码错误')
+  }
+  if (loginResult.data3 || typeof loginResult.data !== 'string' || !loginResult.data) {
+    throw new Error('当前账户需要 Casdoor 额外确认，请联系管理员处理')
+  }
+  return loginResult.data
+}
+
+const fetchCurrentUser = async () => {
+  const res = await axios.get(`${API}/me`)
+  return res.data
+}
+
+const enterAuthenticatedApp = async (profile, showWelcome = false) => {
+  isLoggedIn.value = true
+  user.username = profile.username
+  user.role = profile.role
+  loginForm.password = ''
+  loginStatus.value = ''
+  view.value = 'work'
+  listStatus.value = '未处理'
+  await fetchPendingCount()
+  await refreshNoticeData()
+  if (showWelcome) {
+    alert(`登录成功！\n目前有 ${pendingCount.value} 条待处理数据。`)
+  }
+  fetchData()
+}
+
+const handleLogin = async () => {
+  if (!loginForm.username || !loginForm.password) {
+    loginStatus.value = '请输入账号和密码'
+    return
+  }
+
+  try {
+    isLoginSubmitting.value = true
+    loginStatus.value = '正在登录...'
+    const transaction = await createAuthTransaction({
+      cryptoApi: window.crypto,
+      returnTo: getLoginReturnTo()
+    })
+    const application = await getCasdoorApplication(transaction)
+    const query = buildCasdoorLoginQuery({
+      clientId: casdoorClientId,
+      redirectUri: casdoorRedirectUri,
+      scope: casdoorScopes,
+      transaction
+    })
+    const loginRes = await axios.post(
+      `${casdoorBaseUrl}/api/login?${query.toString()}`,
+      {
+        type: 'code',
+        signinMethod: 'Password',
+        organization: application.organization,
+        application: application.name,
+        clientId: casdoorClientId,
+        username: loginForm.username,
+        password: loginForm.password,
+        autoSignin: false,
+        language: navigator.language || ''
+      },
+      { withCredentials: true }
+    )
+    const consumed = consumeAuthTransaction({ state: transaction.state })
+    await completeCodeLogin(extractCasdoorCode(loginRes.data), consumed, true)
+  } catch (e) {
+    clearAuthStorage()
+    loginForm.password = ''
+    loginStatus.value = e?.message || getRequestErrorMessage(e)
+  } finally {
+    isLoginSubmitting.value = false
+  }
+}
+
+const handleAuthCallback = async () => {
+  const url = new URL(document.location.toString())
+  if (!url.searchParams.has('code') && !url.searchParams.has('error')) return false
+
+  const error = url.searchParams.get('error')
+  if (error) {
+    clearAuthStorage()
+    replaceWithLogin()
+    loginStatus.value = `登录失败：${error}`
+    return true
+  }
+
+  let transaction
+  try {
+    transaction = consumeAuthTransaction({ state: url.searchParams.get('state') })
+  } catch {
+    clearAuthStorage()
+    replaceWithLogin()
+    loginStatus.value = '登录状态校验失败，请重新登录'
+    return true
+  }
+
+  try {
+    loginStatus.value = '正在完成单点登录...'
+    await completeCodeLogin(url.searchParams.get('code'), transaction, true)
+  } catch (e) {
+    clearAuthStorage()
+    replaceWithLogin(transaction.returnTo)
+    loginStatus.value = getRequestErrorMessage(e, '登录回调处理失败，请重新登录')
+  }
+  return true
+}
+
+const completeCodeLogin = async (code, transaction, showWelcome) => {
+  const metadata = await getOidcMetadata()
+  const tokenRes = await axios.post(
+    metadata.token_endpoint,
+    buildTokenRequestBody({
+      clientId: casdoorClientId,
+      redirectUri: casdoorRedirectUri,
+      code,
+      codeVerifier: transaction.codeVerifier
+    }),
+    { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
+  )
+
+  sessionStorage.setItem(ACCESS_TOKEN_KEY, tokenRes.data.access_token)
+  if (tokenRes.data.refresh_token) {
+    sessionStorage.setItem(REFRESH_TOKEN_KEY, tokenRes.data.refresh_token)
+  }
+  clearAuthTransaction()
+  replaceRoute(transaction.returnTo)
+  await enterAuthenticatedApp(await fetchCurrentUser(), showWelcome)
 }
 
 const fetchPendingCount = async () => {
-  const res = await axios.get(`${API}/surveys/pending-count`, { params: { username: user.username, role: user.role } })
+  const res = await axios.get(`${API}/surveys/pending-count`)
   pendingCount.value = res.data
   rebuildTickerMessages()
 }
@@ -494,7 +732,7 @@ const rebuildTickerMessages = () => {
 
 const fetchNoticeUnreadCount = async () => {
   if (!user.username) return
-  const res = await axios.get(`${API}/notices/unread-count`, { params: { username: user.username } })
+  const res = await axios.get(`${API}/notices/unread-count`)
   noticeUnreadCount.value = res.data.count || 0
 }
 
@@ -502,7 +740,6 @@ const fetchNoticeList = async () => {
   if (!user.username) return
   const res = await axios.get(`${API}/notices`, {
     params: {
-      username: user.username,
       status: noticeStatus.value,
       page: noticePage.value,
       size: 8
@@ -517,7 +754,6 @@ const fetchNoticeTicker = async () => {
   if (!user.username) return
   const res = await axios.get(`${API}/notices`, {
     params: {
-      username: user.username,
       status: 'UNREAD',
       page: 1,
       size: 3
@@ -577,7 +813,6 @@ const toggleSelectAllNotices = () => {
 const markSelectedNoticesRead = async () => {
   if (selectedNoticeIds.value.length === 0) return
   await axios.put(`${API}/notices/read`, {
-    username: user.username,
     ids: selectedNoticeIds.value
   })
   selectedNoticeIds.value = []
@@ -588,7 +823,6 @@ const deleteSelectedNotices = async () => {
   if (selectedNoticeIds.value.length === 0) return
   await axios.delete(`${API}/notices`, {
     data: {
-      username: user.username,
       ids: selectedNoticeIds.value
     }
   })
@@ -598,7 +832,6 @@ const deleteSelectedNotices = async () => {
 
 const markSingleNoticeRead = async (id) => {
   await axios.put(`${API}/notices/read`, {
-    username: user.username,
     ids: [id]
   })
   await refreshNoticeData()
@@ -607,7 +840,6 @@ const markSingleNoticeRead = async (id) => {
 const deleteSingleNotice = async (id) => {
   await axios.delete(`${API}/notices`, {
     data: {
-      username: user.username,
       ids: [id]
     }
   })
@@ -619,7 +851,6 @@ const publishNotice = async () => {
   if (!noticeForm.title.trim()) return alert('请填写通知标题')
   if (!noticeForm.content.trim()) return alert('请填写通知内容')
   const res = await axios.post(`${API}/notices`, {
-    operatorUsername: user.username,
     title: noticeForm.title,
     content: noticeForm.content,
     level: noticeForm.level
@@ -634,8 +865,6 @@ const publishNotice = async () => {
 const fetchData = async () => {
   const res = await axios.get(`${API}/surveys`, {
     params: {
-      username: user.username,
-      role: user.role,
       status: listStatus.value === '全部' ? '' : listStatus.value,
       keyword: searchQuery.keyword,
       city: searchQuery.city,
@@ -655,11 +884,10 @@ const submitAdd = async () => {
   if(!form.value.name) return alert('请填写称呼');
   if(!confirm(`确认将客户 [${form.value.name}] 的信息录入系统吗？`)) return;
 
-  form.value.owner = user.username;
   const res = await axios.post(`${API}/surveys`, form.value)
   if(res.data.success) {
     alert('录入成功！');
-    form.value = { name: '', phone: '', wechat: '', city: '', project: '', budget: '', remarks: '', remindDays: 3 };
+    form.value = { name: '', phone: '', wechat: '', city: '', socialAccount: '', project: '', budget: '', remarks: '', remindDays: 3 };
     refreshAll()
   } else { alert(res.data.message); }
 }
@@ -702,7 +930,7 @@ const deleteSingle = async (id) => {
 const fetchUsers = async () => {
   if (user.role !== 'admin') return;
   try {
-    const res = await axios.get(`${API}/users`, { params: { operatorUsername: user.username } });
+    const res = await axios.get(`${API}/users`);
     usersList.value = res.data;
     res.data.forEach((u) => {
       if (!(u.id in userPasswordDraft)) userPasswordDraft[u.id] = '';
@@ -722,8 +950,7 @@ const submitAddUser = async () => {
     const res = await axios.post(`${API}/users`, {
       username: userForm.value.username,
       password: encryptedPassword,
-      role: userForm.value.role,
-      operatorUsername: user.username
+      role: userForm.value.role
     });
     alert(res.data);
     userForm.value = { username: '', password: '', role: 'staff' };
@@ -744,8 +971,7 @@ const updateStaffPassword = async (staff) => {
   try {
     const encryptedPassword = await encryptPassword(newPassword);
     const res = await axios.put(`${API}/users/${staff.id}/password`, {
-      password: encryptedPassword,
-      operatorUsername: user.username
+      password: encryptedPassword
     });
     alert(res.data);
     userPasswordDraft[staff.id] = '';
@@ -758,9 +984,7 @@ const deleteStaffUser = async (staff) => {
   if (user.role !== 'admin') return alert('仅管理员可操作');
   if (!confirm(`危险操作：确认删除员工账号 [${staff.username}] 吗？`)) return;
   try {
-    const res = await axios.delete(`${API}/users/${staff.id}`, {
-      params: { operatorUsername: user.username }
-    });
+    const res = await axios.delete(`${API}/users/${staff.id}`);
     alert(res.data);
     delete userPasswordDraft[staff.id];
     fetchUsers();
@@ -780,8 +1004,13 @@ const stripTime = (d) => d ? d.split(' ')[0] : ''
 const isOverdue = (d) => d && new Date(d) < new Date()
 const logout = () => {
   if(confirm('确定要安全退出系统吗？')) {
+    void axios.post(`${casdoorBaseUrl}/api/logout`, null, { withCredentials: true }).catch(() => {})
+    clearAuthStorage()
     isLoggedIn.value = false
+    user.username = ''
+    user.role = ''
     loginForm.password = ''
+    loginStatus.value = ''
     isMenuOpen.value = false
     isNoticeCenterOpen.value = false
     noticeList.value = []
@@ -789,17 +1018,36 @@ const logout = () => {
     tickerMessages.value = []
     noticeUnreadCount.value = 0
     selectedNoticeIds.value = []
+    replaceWithLogin('/')
   }
 }
 
-onMounted(() => {
-  checkDevice()
-  window.addEventListener('resize', checkDevice)
+onMounted(async () => {
   window.addEventListener('click', handleGlobalClick)
-  if(isLoggedIn.value) refreshAll()
+  if (DISABLED_AUTH_PATHS.has(window.location.pathname)) {
+    replaceWithLogin('/')
+  }
+  if (window.location.pathname === '/auth/callback') {
+    await handleAuthCallback()
+    return
+  }
+  if (sessionStorage.getItem(ACCESS_TOKEN_KEY)) {
+    try {
+      loginStatus.value = '正在恢复登录状态...'
+      await enterAuthenticatedApp(await fetchCurrentUser(), false)
+      if (window.location.pathname === '/login') {
+        replaceRoute(getLoginReturnTo())
+      }
+    } catch (e) {
+      clearAuthStorage()
+      loginStatus.value = ''
+      replaceWithLogin()
+    }
+  } else if (!PUBLIC_PATHS.has(window.location.pathname)) {
+    replaceWithLogin()
+  }
 })
 onUnmounted(() => {
-  window.removeEventListener('resize', checkDevice)
   window.removeEventListener('click', handleGlobalClick)
 })
 </script>
@@ -845,44 +1093,148 @@ onUnmounted(() => {
 
 .login-wrapper {
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
-  padding: clamp(14px, 4vw, 28px);
+  padding: 24px 16px;
   display: grid;
   place-items: center;
-  background: linear-gradient(135deg, #0f172a 0%, #172554 48%, #0a3255 100%);
+  background: #f4f7fc;
 }
 
-.login-box {
-  width: clamp(290px, 84vw, 440px);
-  border-radius: 24px;
-  padding: clamp(24px, 5vw, 38px) clamp(18px, 5vw, 34px);
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-  box-shadow: 0 26px 56px rgba(15, 23, 42, 0.35);
-  animation: rise-in 0.48s ease both;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
+.login-shell {
+  width: min(100%, 430px);
+  border: 1px solid #dbe4ef;
+  border-radius: 16px;
+  padding: clamp(28px, 5vw, 40px);
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.1);
+  animation: rise-in 0.32s ease both;
 }
 
-.input-group {
+.login-header {
+  margin-bottom: 26px;
+  text-align: center;
+}
+
+.login-kicker {
+  margin: 0 0 10px;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.login-form {
   width: 100%;
+  display: grid;
+  gap: 16px;
 }
 
-.login-actions {
-  width: 100%;
-  margin-top: 2px;
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
+.login-field {
+  display: grid;
   gap: 8px;
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.login-input {
+  width: 100%;
+  height: 46px;
+  padding: 0 13px;
+  border: 1px solid #d2dce8;
+  border-radius: 10px;
+  background: #ffffff;
+  font-size: 15px;
+  outline: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.login-input::placeholder {
+  color: #94a3b8;
+}
+
+.password-control {
+  position: relative;
+}
+
+.password-control .login-input {
+  padding-right: 64px;
+}
+
+.password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 38px;
+  height: 32px;
+  border: 0;
+  border-radius: 8px;
+  padding: 0;
+  background: transparent;
+  color: #1d4ed8;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.password-toggle:hover {
+  background: #eff6ff;
+}
+
+.password-toggle:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.password-toggle-icon {
+  width: 21px;
+  height: 21px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.login-input:focus {
+  border-color: #1d4ed8;
+  box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.12);
+}
+
+.login-status {
+  width: 100%;
+  min-height: 20px;
+  color: #b91c1c;
+  font-size: 13px;
+  line-height: 1.35;
+  text-align: center;
+}
+
+.login-footer {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid #edf2f7;
+  color: #94a3b8;
+  font-size: 13px;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.btn-login-action:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
 }
 
 .mega-title {
   margin: 0;
-  font-size: clamp(24px, 4.8vw, 36px);
-  line-height: 1.16;
-  letter-spacing: 0.01em;
+  font-size: clamp(28px, 4vw, 36px);
+  line-height: 1.18;
+  letter-spacing: 0;
   color: #0f172a;
   text-align: center;
 }
@@ -939,8 +1291,8 @@ onUnmounted(() => {
 .btn-save-share,
 .btn-action {
   color: #fff;
-  background: linear-gradient(135deg, var(--brand), var(--brand-strong));
-  box-shadow: 0 12px 24px rgba(29, 78, 216, 0.26);
+  background: var(--brand);
+  box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18);
 }
 
 .btn-login-action:hover,
@@ -954,44 +1306,28 @@ onUnmounted(() => {
 
 .btn-login-action {
   width: 100%;
+  min-height: 48px;
   padding: 12px 14px;
   font-size: 15px;
   font-weight: 700;
-  border-radius: 12px;
-  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 55%, #1e40af 100%);
-  box-shadow: 0 12px 24px rgba(37, 99, 235, 0.34);
+  border-radius: 10px;
+  background: #1d4ed8;
+  box-shadow: 0 10px 18px rgba(29, 78, 216, 0.22);
 }
 
 .btn-login-action:hover {
   transform: translateY(-1px);
-  filter: brightness(1.05);
+  filter: brightness(1.03);
 }
 
 .btn-login-action:active {
   transform: translateY(0);
-  box-shadow: 0 6px 14px rgba(37, 99, 235, 0.28);
-}
-
-.btn-forgot {
-  align-self: flex-end;
-  border: 0;
-  background: transparent;
-  color: #1e40af;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 4px 2px 0;
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  transition: color 0.2s ease;
-}
-
-.btn-forgot:hover {
-  color: #1d4ed8;
+  box-shadow: 0 6px 12px rgba(29, 78, 216, 0.2);
 }
 
 .dashboard {
   min-height: 100vh;
+  background: #f4f7fc;
 }
 
 .top-taskbar {
@@ -1005,9 +1341,10 @@ onUnmounted(() => {
   justify-content: space-between;
   padding: 0 16px;
   z-index: 30;
-  background: rgba(15, 23, 42, 0.88);
+  background: rgba(255, 255, 255, 0.96);
   backdrop-filter: blur(10px);
-  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+  border-bottom: 1px solid #dbe4ef;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06);
 }
 
 .taskbar-left,
@@ -1017,20 +1354,24 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.taskbar-left {
+  min-width: 0;
+}
+
 .menu-trigger-wrap {
   position: relative;
 }
 
 .hamburger-btn {
-  width: 36px;
+  min-width: 52px;
   height: 36px;
   border-radius: 10px;
-  border: 1px solid rgba(148, 163, 184, 0.42);
-  background: rgba(30, 41, 59, 0.62);
-  color: #cbd5e1;
+  border: 1px solid #d2dce8;
+  background: #ffffff;
+  color: #1d4ed8;
   cursor: pointer;
-  font-size: 18px;
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.24);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .hamburger-btn:hover {
@@ -1044,9 +1385,9 @@ onUnmounted(() => {
   left: 0;
   min-width: 176px;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(15, 23, 42, 0.95);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.26);
+  border: 1px solid #dbe4ef;
+  background: #ffffff;
+  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.12);
   padding: 8px;
   display: grid;
   gap: 6px;
@@ -1060,7 +1401,7 @@ onUnmounted(() => {
   border: 0;
   border-radius: 10px;
   text-align: left;
-  color: #d5deec;
+  color: #334155;
   background: transparent;
   font-size: 14px;
   font-weight: 600;
@@ -1070,41 +1411,72 @@ onUnmounted(() => {
 
 .menu-popover button:hover,
 .menu-popover button.active {
-  color: #fff;
-  background: rgba(29, 78, 216, 0.32);
+  color: #1d4ed8;
+  background: #eff6ff;
 }
 
 .brand-text {
-  color: #f8fafc;
+  color: #0f172a;
   font-size: 18px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.desktop-nav {
+  display: none;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 4px;
+  border-radius: 12px;
+  background: #f1f5f9;
+}
+
+.desktop-nav button {
+  border: 0;
+  border-radius: 9px;
+  padding: 8px 14px;
+  color: #475569;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.desktop-nav button:hover,
+.desktop-nav button.active {
+  color: #1d4ed8;
+  background: #ffffff;
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.1);
 }
 
 .user-name {
-  color: #f8fafc;
+  color: #0f172a;
   font-weight: 700;
   font-size: 13px;
+  white-space: nowrap;
 }
 
 .role-tag {
   font-size: 11px;
-  color: #cffafe;
-  background: rgba(14, 116, 144, 0.25);
-  border: 1px solid rgba(14, 116, 144, 0.4);
+  color: #1d4ed8;
+  background: #eff6ff;
+  border: 1px solid #bfdbfe;
   border-radius: 999px;
   padding: 3px 9px;
 }
 
 .btn-notice-icon {
   position: relative;
-  width: 36px;
+  min-width: 44px;
   height: 36px;
-  border: 1px solid rgba(125, 211, 252, 0.42);
-  background: rgba(14, 116, 144, 0.28);
-  color: #ecfeff;
+  border: 1px solid #d2dce8;
+  background: #ffffff;
+  color: #1d4ed8;
   border-radius: 10px;
-  font-size: 16px;
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
 }
 
@@ -1126,21 +1498,25 @@ onUnmounted(() => {
 }
 
 .btn-logout-icon {
-  border: 1px solid rgba(248, 113, 113, 0.38);
-  background: rgba(185, 28, 28, 0.25);
-  color: #fee2e2;
+  border: 1px solid #fecaca;
+  background: #fff;
+  color: #b91c1c;
   border-radius: 10px;
   font-size: 13px;
   font-weight: 700;
-  letter-spacing: 0.02em;
+  letter-spacing: 0;
   padding: 7px 12px;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .main-body {
   margin-top: 66px;
   padding: 16px;
   width: 100%;
+  max-width: 1320px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .notify-bar {
@@ -1204,20 +1580,21 @@ onUnmounted(() => {
 .page-header {
   border-radius: 16px;
   padding: 16px;
-  background: linear-gradient(120deg, #0f172a, #1e3a8a 64%, #0b4e76);
-  color: #fff;
+  background: #ffffff;
+  color: #0f172a;
+  border: 1px solid var(--line);
   display: flex;
   flex-direction: column;
   gap: 12px;
-  box-shadow: var(--shadow);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   animation: rise-in 0.5s ease both;
 }
 
 .white-text {
   margin: 0;
-  color: #fff;
+  color: #0f172a;
   font-size: clamp(23px, 3vw, 30px);
-  letter-spacing: 0.01em;
+  letter-spacing: 0;
 }
 
 .header-tools {
@@ -1229,8 +1606,9 @@ onUnmounted(() => {
 .btn-refresh {
   padding: 11px 14px;
   font-weight: 700;
-  color: #0f172a;
-  background: #e0f2fe;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
   box-shadow: none;
 }
 
@@ -1248,7 +1626,7 @@ onUnmounted(() => {
   display: inline-flex;
   flex-wrap: wrap;
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.16);
+  background: #f1f5f9;
   padding: 3px;
 }
 
@@ -1258,15 +1636,15 @@ onUnmounted(() => {
   border-radius: 9px;
   font-size: 13px;
   font-weight: 700;
-  color: #dbeafe;
+  color: #64748b;
   background: transparent;
   cursor: pointer;
 }
 
 .tab-group button.active {
-  color: #1e3a8a;
+  color: #1d4ed8;
   background: #fff;
-  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.16);
+  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.1);
 }
 
 .search-filter-bar,
@@ -1313,9 +1691,9 @@ onUnmounted(() => {
   padding: 11px 18px;
   font-weight: 700;
   border: 1px solid #1d4ed8 !important;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+  background: #1d4ed8 !important;
   color: #ffffff !important;
-  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.3) !important;
+  box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18) !important;
 }
 
 .btn-reset {
@@ -1367,21 +1745,21 @@ onUnmounted(() => {
   padding: 11px 14px;
   font-weight: 700;
   border: 1px solid #1d4ed8 !important;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+  background: #1d4ed8 !important;
   color: #ffffff !important;
-  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.3) !important;
+  box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18) !important;
 }
 
 .search-actions .btn-search,
 .form-grid-fluid > .btn-add-fluid {
   border: 1px solid #1d4ed8 !important;
-  background: linear-gradient(135deg, #3b82f6, #1d4ed8) !important;
+  background: #1d4ed8 !important;
   color: #ffffff !important;
-  box-shadow: 0 12px 22px rgba(37, 99, 235, 0.3) !important;
+  box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18) !important;
 }
 
 .btn-add-fluid.dark {
-  background: linear-gradient(130deg, #0f172a, #1e293b);
+  background: #0f172a !important;
 }
 
 .table-container {
@@ -2097,8 +2475,8 @@ onUnmounted(() => {
 
 .pager-fluid button {
   border: 1px solid rgba(37, 99, 235, 0.38);
-  background: linear-gradient(135deg, #2563eb, #1d4ed8);
-  color: #fff;
+  background: #ffffff;
+  color: #1d4ed8;
   font-weight: 700;
   border-radius: 10px;
   padding: 8px 13px;
@@ -2108,7 +2486,7 @@ onUnmounted(() => {
 
 .pager-fluid button:hover:not(:disabled) {
   transform: translateY(-1px);
-  filter: brightness(1.05);
+  background: #eff6ff;
 }
 
 .pager-fluid button:disabled {
@@ -2139,7 +2517,15 @@ onUnmounted(() => {
   }
 }
 
-@media (min-width: 1025px) {
+@media (min-width: 901px) {
+  .mobile-menu {
+    display: none;
+  }
+
+  .desktop-nav {
+    display: flex;
+  }
+
   .main-body {
     padding: 22px 30px;
   }
@@ -2155,8 +2541,24 @@ onUnmounted(() => {
   }
 }
 
-@media (max-width: 1024px) {
+@media (max-width: 900px) {
   .hide-on-mobile {
+    display: none;
+  }
+
+  .taskbar-left,
+  .taskbar-right {
+    gap: 8px;
+  }
+
+  .brand-text {
+    max-width: 42vw;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 15px;
+  }
+
+  .user-name {
     display: none;
   }
 

@@ -12,6 +12,7 @@ public class Survey {
     private String city;
     private String project;
     private String wechat;
+    private String socialAccount;
     private String budget;
     private String requirement;
     private String remarks;
