@@ -16,6 +16,12 @@ xyyx/src/main/resources/application-*.properties
 # Logs and runtime files
 *.log
 logs/
+runtime-logs/
+.claude/session-log.md
+.docker-tmp/
+
+# Deployment artifacts and packaged binaries (built/zipped, may carry prod secrets)
+release/
 
 # OS files
 .DS_Store
