@@ -20,10 +20,12 @@ public class Survey {
     private String visibility;
     private String sharedUsers;
 
-    // @JsonFormat 能把数据库的时间自动变成好看的字符串传给 Vue
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm", timezone = "GMT+8")
     private LocalDateTime createTime;
 
     @JsonFormat(pattern = "yyyy-MM-dd HH:mm", timezone = "GMT+8")
     private LocalDateTime nextSurveyDate;
+
+    private Boolean due;
+    private Long overdueDays;
 }
