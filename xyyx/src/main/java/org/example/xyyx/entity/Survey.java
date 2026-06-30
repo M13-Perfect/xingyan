@@ -1,5 +1,6 @@
 package org.example.xyyx.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.Data;
 import com.fasterxml.jackson.annotation.JsonFormat;
 import java.time.LocalDateTime;
@@ -7,8 +8,30 @@ import java.time.LocalDateTime;
 @Data
 public class Survey {
     private Long id;
+    private String tenantId;
+    private String customerUuid;
     private String name;
+    @JsonIgnore
     private String phone;
+    @JsonIgnore
+    private byte[] phoneCiphertext;
+    @JsonIgnore
+    private byte[] phoneIv;
+    @JsonIgnore
+    private byte[] phoneTag;
+    @JsonIgnore
+    private String phoneEncKeyVersion;
+    @JsonIgnore
+    private byte[] phoneHash;
+    @JsonIgnore
+    private String phoneHashKeyVersion;
+    private String phoneMask;
+    @JsonIgnore
+    private byte[] phoneSuffix4Hash;
+    @JsonIgnore
+    private String phoneRegion;
+    @JsonIgnore
+    private String phoneNormalizedVersion;
     private String city;
     private String project;
     private String wechat;

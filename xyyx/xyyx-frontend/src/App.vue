@@ -77,12 +77,14 @@
             <div class="menu-popover" v-if="isMenuOpen" @click.stop>
               <button :class="{active: view === 'work'}" @click="switchView('work')">工作台</button>
               <button v-if="user.role === 'admin'" :class="{active: view === 'users'}" @click="switchView('users')">员工管理</button>
+              <button v-if="user.role === 'admin'" type="button" @click="openSystemSettings">设置</button>
             </div>
           </div>
           <span class="brand-text">序界客户回访系统</span>
           <nav class="desktop-nav" aria-label="主导航">
             <button :class="{active: view === 'work'}" @click="switchView('work')">工作台</button>
             <button v-if="user.role === 'admin'" :class="{active: view === 'users'}" @click="switchView('users')">员工管理</button>
+            <button v-if="user.role === 'admin'" type="button" @click="openSystemSettings">设置</button>
           </nav>
         </div>
         <div class="taskbar-right">
@@ -116,38 +118,35 @@
               <button @click="refreshAll" class="btn-refresh">刷新数据</button>
               <div class="tab-group-container">
                 <div class="tab-group">
-                  <button :class="{active: listStatus==='未处理'}" @click="listStatus='未处理';doSearch()">待处理</button>
-                  <button :class="{active: listStatus==='已处理'}" @click="listStatus='已处理';doSearch()">已处理</button>
-                  <button v-if="user.role === 'admin'" :class="{active: listStatus==='全部'}" @click="listStatus='全部';doSearch()">全量库</button>
+                  <button :class="{active: !dueOnly && listStatus==='未处理'}" @click="selectListStatus('未处理')">待处理</button>
+                  <button :class="{active: dueOnly}" @click="selectRevisitTab">待回访<span v-if="revisitDueCount > 0"> {{ revisitDueCount }}</span></button>
+                  <button :class="{active: !dueOnly && listStatus==='已处理'}" @click="selectListStatus('已处理')">已处理</button>
+                  <button v-if="user.role === 'admin'" :class="{active: !dueOnly && listStatus==='全部'}" @click="selectListStatus('全部')">全部</button>
                 </div>
               </div>
             </div>
           </header>
 
+          <button
+            v-if="revisitTodayCount > 0 || revisitOverdueCount > 0"
+            type="button"
+            class="revisit-summary"
+            :class="{ active: dueOnly }"
+            @click="selectRevisitTab"
+          >
+            <span class="revisit-summary-today">今日待回访 {{ revisitTodayCount }}</span>
+            <span class="revisit-summary-sep">·</span>
+            <span class="revisit-summary-overdue">已逾期 {{ revisitOverdueCount }}</span>
+          </button>
+          <div v-else class="revisit-summary revisit-summary-empty">暂无待回访</div>
+
           <div class="search-filter-bar">
-            <div class="search-inputs">
-              <input v-model="searchQuery.keyword" placeholder="搜索称呼 / 电话 / 微信 / 社交账号 / 项目" class="search-input text-black" @keyup.enter="doSearch">
-              <input v-model="searchQuery.city" placeholder="按城市筛选" class="search-input text-black" @keyup.enter="doSearch">
-            </div>
-            <div class="search-actions">
-              <button @click="doSearch" class="btn-search">查询</button>
-              <button @click="resetSearch" class="btn-reset">重置</button>
-            </div>
+            <input v-model="searchQuery.keyword" class="search-input text-black" aria-label="搜索客户" @keyup.enter="doSearch">
+            <button @click="doSearch" class="btn-search">查询</button>
           </div>
 
-          <div class="form-card">
-            <h4 class="form-title"> 录入新回访记录</h4>
-            <div class="form-grid-fluid">
-              <input v-model="form.name" placeholder="称呼 (必填)" class="text-black">
-              <input v-model="form.phone" placeholder="电话 (不可重复)" class="text-black">
-              <input v-model="form.wechat" placeholder="微信 (不可重复)" class="text-black">
-              <input v-model="form.city" placeholder="城市" class="text-black">
-              <input v-model="form.socialAccount" placeholder="社交账号" class="text-black">
-              <input v-model="form.project" placeholder="项目" class="text-black">
-              <input v-model="form.budget" placeholder="预算" class="text-black">
-              <input v-model="form.remarks" placeholder="需求备注" class="text-black remarks-input span-full-width">
-              <button @click="submitAdd" class="btn-add-fluid span-full-width">录入</button>
-            </div>
+          <div class="create-record-row">
+            <button type="button" @click="openSurveyForm" class="btn-add-fluid btn-create-record">+ 录入新回访记录</button>
           </div>
 
           <div class="table-container">
@@ -165,11 +164,14 @@
               <tr v-for="item in surveys" :key="item.id" @click="openModal(item)" class="clickable-row">
                 <td>
                   <span :class="['status-badge', item.status === '已处理' ? 'done' : 'todo']">{{ item.status }}</span>
-                  <div v-if="isOverdue(item.nextSurveyDate) && item.status==='未处理'" class="red-tag mt-1">需复访</div>
+                  <div v-if="revisitTag(item).type === 'overdue'" class="red-tag mt-1">{{ revisitTag(item).text }}</div>
+                  <div v-else-if="revisitTag(item).type === 'today'" class="amber-tag mt-1">{{ revisitTag(item).text }}</div>
                 </td>
                 <td class="bold highlight-text">{{ item.name }}</td>
                 <td>
-                  <div class="contact-line">电话：<span class="text-black">{{ item.phone || '无' }}</span></div>
+                  <div class="contact-line">
+                    电话：<span class="text-black">{{ displayPhoneValue(item, revealedPhones, nowTick) }}</span>
+                  </div>
                   <div class="contact-line">微信：<span class="text-black">{{ item.wechat || '无' }}</span></div>
                   <div class="contact-line">社交账号：<span class="text-black">{{ item.socialAccount || '无' }}</span></div>
                 </td>
@@ -237,12 +239,81 @@
           </div>
         </div>
 
+        <div class="modal-overlay" v-if="isSystemSettingsOpen" @click.self="closeSystemSettings">
+          <div class="modal-content system-settings-modal">
+            <header class="modal-header">
+              <h3 class="modal-title">系统设置</h3>
+              <button class="btn-close" type="button" @click="closeSystemSettings" title="关闭">关闭</button>
+            </header>
+            <div class="policy-warning">
+              手机号策略只影响员工查看自己有权限订单时，手机号如何展示；不会让员工看到未分配或不可见订单，也不会授予完整手机号导出权限。
+            </div>
+            <div class="form-grid-fluid">
+              <div class="policy-field policy-toggle-field">
+                <span>手机号隐私设置</span>
+                <button
+                  type="button"
+                  class="privacy-toggle"
+                  :class="isPhonePrivacyOn ? 'is-on' : 'is-off'"
+                  role="switch"
+                  :aria-checked="isPhonePrivacyOn"
+                  @click="isPhonePrivacyOn = !isPhonePrivacyOn"
+                >
+                  <span class="privacy-toggle-knob"></span>
+                  <span class="privacy-toggle-text">{{ isPhonePrivacyOn ? 'ON' : 'OFF' }}</span>
+                </button>
+                <small>{{ currentPhonePolicyDescription }}</small>
+              </div>
+              <label class="policy-field">
+                <span>单页显示订单数量</span>
+                <input
+                  v-model.number="systemSettingsForm.orderPageSize"
+                  class="text-black"
+                  type="number"
+                  min="1"
+                  max="100"
+                >
+                <small>范围 1 - 100。</small>
+              </label>
+            </div>
+            <p class="policy-warning">
+              开关 ON：员工点击任意一个可见订单的小眼睛后，本次登录期间其所有可见订单的手机号都不再隐藏。
+              开关 OFF：员工点击小眼睛只显示该一条订单的完整手机号，且仅 5 分钟（300 秒）后自动重新打码。
+            </p>
+            <footer class="modal-footer">
+              <button class="btn-inline" type="button" @click="closeSystemSettings">取消</button>
+              <button class="btn-action" type="button" :disabled="isSystemSettingsSaving" @click="saveSystemSettings">保存</button>
+            </footer>
+          </div>
+        </div>
+
         <div class="pager-fluid" v-if="view === 'work'">
           <button :disabled="page <= 1" @click="page--;fetchData()">上一页</button>
           <span class="pager-txt">第 {{ page }} / {{ totalPages }} 页</span>
           <button :disabled="page >= totalPages" @click="page++;fetchData()">下一页</button>
         </div>
       </main>
+
+      <div class="modal-overlay" v-if="isSurveyFormOpen" @click.self="closeSurveyForm">
+        <div class="modal-content create-survey-modal">
+          <header class="modal-header">
+            <h3 class="modal-title">录入新回访记录</h3>
+            <button class="btn-close" @click="closeSurveyForm" title="关闭">关闭</button>
+          </header>
+
+          <form class="modal-body form-grid-fluid create-survey-form" @submit.prevent="submitAdd">
+            <input v-model="form.name" placeholder="称呼 (必填)" class="text-black">
+            <input v-model="form.phone" placeholder="电话 (不可重复)" class="text-black">
+            <input v-model="form.wechat" placeholder="微信 (不可重复)" class="text-black">
+            <input v-model="form.city" placeholder="城市" class="text-black">
+            <input v-model="form.socialAccount" placeholder="社交账号" class="text-black">
+            <input v-model="form.project" placeholder="项目" class="text-black">
+            <input v-model="form.budget" placeholder="预算" class="text-black">
+            <input v-model="form.remarks" placeholder="需求备注" class="text-black remarks-input span-full-width">
+            <button type="submit" class="btn-add-fluid span-full-width">录入</button>
+          </form>
+        </div>
+      </div>
 
       <div class="modal-overlay notice-center-overlay" v-if="isNoticeCenterOpen" @click.self="closeNoticeCenter">
         <div class="notice-center-panel">
@@ -346,14 +417,42 @@
             <div class="m-item"><span class="lbl">状态:</span>
               <span :class="['status-badge', selectedSurvey.status === '已处理' ? 'done' : 'todo']">{{ selectedSurvey.status }}</span>
             </div>
-            <div class="m-item"><span class="lbl">电话:</span> <span class="val text-black">{{ selectedSurvey.phone || '无' }}</span></div>
+            <div class="m-item phone-reveal-row">
+              <span class="lbl">电话:</span>
+              <span class="val text-black">{{ displayPhoneValue(selectedSurvey, revealedPhones, nowTick) }}</span>
+              <button
+                v-if="selectedSurvey.canRevealPhone"
+                class="btn-eye"
+                type="button"
+                :disabled="isSelectedPhoneRevealBusy"
+                @click.stop="revealSelectedPhone"
+                aria-label="查看完整手机号"
+                title="查看完整手机号"
+              >
+                <svg class="eye-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M2.25 12s3.75-6.75 9.75-6.75S21.75 12 21.75 12 18 18.75 12 18.75 2.25 12 2.25 12Z" />
+                  <circle cx="12" cy="12" r="2.75" />
+                </svg>
+              </button>
+            </div>
             <div class="m-item"><span class="lbl">微信:</span> <span class="val text-black">{{ selectedSurvey.wechat || '无' }}</span></div>
             <div class="m-item"><span class="lbl">城市:</span> <span class="val text-black">{{ selectedSurvey.city || '未填写' }}</span></div>
             <div class="m-item"><span class="lbl">社交账号:</span> <span class="val text-black">{{ selectedSurvey.socialAccount || '未填写' }}</span></div>
 
             <div class="m-item full-width reminder-row-modal">
-              <span class="lbl text-danger">⏱️ 设置下次提醒:</span>
-              <input type="date" :min="todayDate" @change="e => updateDate(selectedSurvey.id, e.target.value)" :value="stripTime(selectedSurvey.nextSurveyDate)" class="date-picker text-black">
+              <div class="reminder-copy">
+                <span class="lbl">下次回访日期</span>
+                <span class="reminder-help">到这天还没处理的客户，会自动进入「待回访」并在列表里标红。</span>
+                <span v-if="reminderSaveMessage" :class="['reminder-status', reminderSaveState]" aria-live="polite">{{ reminderSaveMessage }}</span>
+              </div>
+              <input
+                type="date"
+                :min="todayDate"
+                :disabled="reminderSaveState === 'saving'"
+                @change="e => updateDate(selectedSurvey.id, e.target.value)"
+                :value="stripTime(selectedSurvey.nextSurveyDate)"
+                class="date-picker text-black"
+              >
             </div>
           </div>
 
@@ -396,6 +495,7 @@ import {
   createAuthTransaction,
   sanitizeReturnTo
 } from './auth/oidc.js'
+import { beginPhoneRevealRequest, clearPhoneRevealUiState, displayPhoneValue, finishPhoneRevealRequest } from './phonePrivacy.js'
 
 const API = '/api'
 const casdoorBaseUrl = import.meta.env.VITE_CASDOOR_ENDPOINT || import.meta.env.VITE_CASDOOR_BASE_URL || 'http://localhost:8000'
@@ -427,22 +527,73 @@ axios.interceptors.request.use((config) => {
 })
 
 const isMenuOpen = ref(false)
+const isSurveyFormOpen = ref(false)
 
 const selectedSurvey = ref(null)
-const openModal = (item) => { selectedSurvey.value = { ...item } }
+const reminderSaveState = ref('idle')
+const reminderSaveMessage = ref('')
+const resetReminderSaveState = () => {
+  reminderSaveState.value = 'idle'
+  reminderSaveMessage.value = ''
+}
+const openModal = (item) => {
+  resetReminderSaveState()
+  selectedSurvey.value = { ...item }
+}
 const closeModal = () => { selectedSurvey.value = null }
+const openSurveyForm = () => { isSurveyFormOpen.value = true }
+const closeSurveyForm = () => { isSurveyFormOpen.value = false }
 
 const searchQuery = reactive({ keyword: '', city: '' })
 
 const listStatus = ref('未处理')
+const dueOnly = ref(false)
 const surveys = ref([])
 const pendingCount = ref(0)
+const revisitTodayCount = ref(0)
+const revisitOverdueCount = ref(0)
+const revisitDueCount = ref(0)
 const form = ref({ name: '', phone: '', wechat: '', city: '', socialAccount: '', project: '', budget: '', remarks: '', remindDays: 3 })
 const page = ref(1); const totalPages = ref(1); const totalCount = ref(0)
 const todayDate = new Date().toISOString().split('T')[0]
 const usersList = ref([])
 const userForm = ref({ username: '', password: '', role: 'staff' })
 const userPasswordDraft = reactive({})
+const orderPageSize = ref(20)
+const isSystemSettingsOpen = ref(false)
+const isSystemSettingsSaving = ref(false)
+const PHONE_POLICY_ON = 'CLICK_TO_SESSION_VISIBLE'
+const PHONE_POLICY_OFF = 'SINGLE_ORDER_TIMED_REVEAL'
+const PHONE_POLICY_DESCRIPTIONS = {
+  [PHONE_POLICY_ON]: '开关 ON：员工任意点击一个可见订单的小眼睛后，本次登录期间所有可见订单手机号不再隐藏。',
+  [PHONE_POLICY_OFF]: '开关 OFF：员工点击小眼睛只显示该一条订单的完整手机号，限时 5 分钟（300 秒）后自动重新打码。'
+}
+const systemSettingsForm = reactive({
+  phoneDisplayPolicy: 'CLICK_TO_SESSION_VISIBLE',
+  orderPageSize: 20
+})
+const revealedPhones = reactive(new Map())
+const nowTick = ref(Date.now())
+let revealSweepTimer = null
+const phoneRevealRequestState = {
+  inFlightIds: reactive(new Set()),
+  lastRevealAtById: reactive(new Map())
+}
+const isSelectedPhoneRevealBusy = computed(() => (
+  selectedSurvey.value ? phoneRevealRequestState.inFlightIds.has(selectedSurvey.value.id) : false
+))
+const currentPhonePolicyDescription = computed(() => (
+  PHONE_POLICY_DESCRIPTIONS[systemSettingsForm.phoneDisplayPolicy] || ''
+))
+const isPhonePrivacyOn = computed({
+  get: () => systemSettingsForm.phoneDisplayPolicy !== PHONE_POLICY_OFF,
+  set: (on) => { systemSettingsForm.phoneDisplayPolicy = on ? PHONE_POLICY_ON : PHONE_POLICY_OFF }
+})
+
+const clearPhoneRevealState = () => {
+  clearPhoneRevealUiState(surveys.value, selectedSurvey.value, revealedPhones)
+  nowTick.value = Date.now()
+}
 
 const noticeUnreadCount = ref(0)
 const tickerMessages = ref([])
@@ -505,6 +656,23 @@ const switchView = (v) => {
   if(v === 'users') fetchUsers(); else fetchData()
 }
 
+const openSystemSettings = async () => {
+  if (user.role !== 'admin') return
+  isMenuOpen.value = false
+  try {
+    const res = await axios.get(`${API}/admin/system-settings`)
+    systemSettingsForm.phoneDisplayPolicy = res.data.phoneDisplayPolicy || 'CLICK_TO_SESSION_VISIBLE'
+    systemSettingsForm.orderPageSize = Number(res.data.orderPageSize || 20)
+    isSystemSettingsOpen.value = true
+  } catch (e) {
+    alert(getApiErrorMessage(e, '系统设置加载失败'))
+  }
+}
+
+const closeSystemSettings = () => {
+  isSystemSettingsOpen.value = false
+}
+
 const handleGlobalClick = (event) => {
   if (!isMenuOpen.value) return
   if (event.target?.closest('.menu-trigger-wrap')) return
@@ -519,25 +687,55 @@ const getRequestErrorMessage = (error, fallback = '服务器网络异常，请�
       if (status === 401 || status === 403) return '登录失败：Casdoor Token 未通过业务系统校验'
       return `登录失败：请求异常（HTTP ${status}）`
     }
-    if (error.request) return '登录失败：无法连接服务器，请确认后端服务已启动'
+    if (error.request) return '登录失败：无法连接认证服务或业务后端，请检查 HTTPS 证书、CORS 与服务状态'
   }
   return fallback
 }
 
 const getApiErrorMessage = (error, fallback) => {
   if (axios.isAxiosError(error)) {
-    if (typeof error.response?.data === 'string') return error.response.data
+    const data = error.response?.data
+    if (typeof data === 'string') return data
+    if (data && typeof data === 'object' && (data.message || data.code || data.requestId)) {
+      const message = data.message || fallback
+      const code = data.code || `HTTP ${error.response?.status || ''}`.trim()
+      return data.requestId
+        ? `${fallback}：${message}（${code}, requestId=${data.requestId}）`
+        : `${fallback}：${message}（${code}）`
+    }
     if (error.response?.status) return `${fallback}（HTTP ${error.response.status}）`
     if (error.request) return `${fallback}（无法连接后端）`
   }
   return fallback
 }
 
+const fetchAppSettings = async () => {
+  try {
+    const res = await axios.get(`${API}/app-settings`)
+    orderPageSize.value = clampOrderPageSize(res.data?.orderPageSize || 20)
+  } catch (e) {
+    orderPageSize.value = 20
+  }
+}
+
+const clampOrderPageSize = (value) => Math.min(100, Math.max(1, Number(value) || 20))
+
 const clearAuthStorage = () => {
   sessionStorage.removeItem(ACCESS_TOKEN_KEY)
   sessionStorage.removeItem(REFRESH_TOKEN_KEY)
   clearAuthTransaction()
+  clearPhoneRevealState()
 }
+
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (axios.isAxiosError(error) && error.response?.status === 401) {
+      clearPhoneRevealState()
+    }
+    return Promise.reject(error)
+  }
+)
 
 const getOidcMetadata = async () => {
   const discoveryUrl = buildDiscoveryUrl(casdoorBaseUrl, casdoorApplicationName)
@@ -604,12 +802,15 @@ const enterAuthenticatedApp = async (profile, showWelcome = false) => {
   loginStatus.value = ''
   view.value = 'work'
   listStatus.value = '未处理'
+  dueOnly.value = false
+  await fetchAppSettings()
   await fetchPendingCount()
   await refreshNoticeData()
   if (showWelcome) {
     alert(`登录成功！\n目前有 ${pendingCount.value} 条待处理数据。`)
   }
   fetchData()
+  fetchRevisitCount()
 }
 
 const handleLogin = async () => {
@@ -652,7 +853,7 @@ const handleLogin = async () => {
   } catch (e) {
     clearAuthStorage()
     loginForm.password = ''
-    loginStatus.value = e?.message || getRequestErrorMessage(e)
+    loginStatus.value = getRequestErrorMessage(e, e?.message || '登录失败，请稍后重试')
   } finally {
     isLoginSubmitting.value = false
   }
@@ -732,35 +933,53 @@ const rebuildTickerMessages = () => {
 
 const fetchNoticeUnreadCount = async () => {
   if (!user.username) return
-  const res = await axios.get(`${API}/notices/unread-count`)
-  noticeUnreadCount.value = res.data.count || 0
+  try {
+    const res = await axios.get(`${API}/notices/unread-count`)
+    noticeUnreadCount.value = res.data.count || 0
+  } catch (e) {
+    noticeUnreadCount.value = 0
+    console.error(getApiErrorMessage(e, '未读公告数量加载失败'))
+  }
 }
 
 const fetchNoticeList = async () => {
   if (!user.username) return
-  const res = await axios.get(`${API}/notices`, {
-    params: {
-      status: noticeStatus.value,
-      page: noticePage.value,
-      size: 8
-    }
-  })
-  noticeList.value = res.data.data || []
-  noticeTotalPages.value = res.data.pages || 1
-  selectedNoticeIds.value = selectedNoticeIds.value.filter(id => noticeList.value.some(item => item.id === id))
+  try {
+    const res = await axios.get(`${API}/notices`, {
+      params: {
+        status: noticeStatus.value,
+        page: noticePage.value,
+        size: 8
+      }
+    })
+    noticeList.value = res.data.data || []
+    noticeTotalPages.value = res.data.pages || 1
+    selectedNoticeIds.value = selectedNoticeIds.value.filter(id => noticeList.value.some(item => item.id === id))
+  } catch (e) {
+    noticeList.value = []
+    noticeTotalPages.value = 1
+    selectedNoticeIds.value = []
+    alert(getApiErrorMessage(e, '公告加载失败，请稍后重试'))
+  }
 }
 
 const fetchNoticeTicker = async () => {
   if (!user.username) return
-  const res = await axios.get(`${API}/notices`, {
-    params: {
-      status: 'UNREAD',
-      page: 1,
-      size: 3
-    }
-  })
-  noticeTickerList.value = res.data.data || []
-  rebuildTickerMessages()
+  try {
+    const res = await axios.get(`${API}/notices`, {
+      params: {
+        status: 'UNREAD',
+        page: 1,
+        size: 3
+      }
+    })
+    noticeTickerList.value = res.data.data || []
+    rebuildTickerMessages()
+  } catch (e) {
+    noticeTickerList.value = []
+    rebuildTickerMessages()
+    console.error(getApiErrorMessage(e, '公告滚动条加载失败'))
+  }
 }
 
 const refreshNoticeData = async () => {
@@ -812,73 +1031,193 @@ const toggleSelectAllNotices = () => {
 
 const markSelectedNoticesRead = async () => {
   if (selectedNoticeIds.value.length === 0) return
-  await axios.put(`${API}/notices/read`, {
-    ids: selectedNoticeIds.value
-  })
-  selectedNoticeIds.value = []
-  await refreshNoticeData()
+  try {
+    await axios.put(`${API}/notices/read`, {
+      ids: selectedNoticeIds.value
+    })
+    selectedNoticeIds.value = []
+    await refreshNoticeData()
+  } catch (e) {
+    alert(getApiErrorMessage(e, '公告标记已读失败，请稍后重试'))
+  }
 }
 
 const deleteSelectedNotices = async () => {
   if (selectedNoticeIds.value.length === 0) return
-  await axios.delete(`${API}/notices`, {
-    data: {
-      ids: selectedNoticeIds.value
-    }
-  })
-  selectedNoticeIds.value = []
-  await refreshNoticeData()
+  try {
+    await axios.delete(`${API}/notices`, {
+      data: {
+        ids: selectedNoticeIds.value
+      }
+    })
+    selectedNoticeIds.value = []
+    await refreshNoticeData()
+  } catch (e) {
+    alert(getApiErrorMessage(e, '公告删除失败，请稍后重试'))
+  }
 }
 
 const markSingleNoticeRead = async (id) => {
-  await axios.put(`${API}/notices/read`, {
-    ids: [id]
-  })
-  await refreshNoticeData()
+  try {
+    await axios.put(`${API}/notices/read`, {
+      ids: [id]
+    })
+    await refreshNoticeData()
+  } catch (e) {
+    alert(getApiErrorMessage(e, '公告标记已读失败，请稍后重试'))
+  }
 }
 
 const deleteSingleNotice = async (id) => {
-  await axios.delete(`${API}/notices`, {
-    data: {
-      ids: [id]
-    }
-  })
-  await refreshNoticeData()
+  try {
+    await axios.delete(`${API}/notices`, {
+      data: {
+        ids: [id]
+      }
+    })
+    await refreshNoticeData()
+  } catch (e) {
+    alert(getApiErrorMessage(e, '公告删除失败，请稍后重试'))
+  }
 }
 
 const publishNotice = async () => {
   if (user.role !== 'admin') return alert('仅管理员可操作')
   if (!noticeForm.title.trim()) return alert('请填写通知标题')
   if (!noticeForm.content.trim()) return alert('请填写通知内容')
-  const res = await axios.post(`${API}/notices`, {
-    title: noticeForm.title,
-    content: noticeForm.content,
-    level: noticeForm.level
-  })
-  if (!res.data.success) return alert(res.data.message || '通知发布失败')
-  noticeForm.title = ''
-  noticeForm.content = ''
-  noticeForm.level = 'INFO'
-  await refreshNoticeData()
+  try {
+    const res = await axios.post(`${API}/notices`, {
+      title: noticeForm.title,
+      content: noticeForm.content,
+      level: noticeForm.level
+    })
+    if (!res.data.success) return alert(res.data.message || '通知发布失败')
+    noticeForm.title = ''
+    noticeForm.content = ''
+    noticeForm.level = 'INFO'
+    await refreshNoticeData()
+  } catch (e) {
+    alert(getApiErrorMessage(e, '通知发布失败，请稍后重试'))
+  }
 }
+
+const applySurveyResponse = (payload) => {
+  const rows = Array.isArray(payload) ? payload : (payload.data || [])
+  const now = Date.now()
+  clearPhoneRevealState()
+  surveys.value = rows.map((row) => {
+    if (row?.id !== undefined && row.phoneRevealed === true && row.phoneDisplay) {
+      revealedPhones.set(row.id, {
+        phoneRevealed: true,
+        phoneDisplay: row.phoneDisplay,
+        expiresAt: row.phoneRevealExpiresAt ? Number(row.phoneRevealExpiresAt) : Number.POSITIVE_INFINITY
+      })
+    }
+    return sanitizeSurveyItem(row)
+  })
+  totalPages.value = payload.pages || 1
+  totalCount.value = payload.total || surveys.value.length
+}
+
+const sanitizeSurveyItem = ({
+  id, tenantId, customerUuid, name, phoneDisplay, phoneMask, phoneRevealed, phoneDisplayMode, phoneDisplayPolicy, phoneRevealStatus,
+  canRevealPhone,
+  wechat, socialAccount, city, project,
+  budget, remarks, owner, visibility, status, createTime, nextSurveyDate, sharedUsers
+} = {}) => ({
+  id, tenantId, customerUuid, name, phoneDisplay: phoneRevealed ? (phoneMask || '') : phoneDisplay, phoneMask, phoneRevealed, phoneDisplayMode, phoneDisplayPolicy, phoneRevealStatus,
+  canRevealPhone: Boolean(canRevealPhone),
+  wechat, socialAccount, city, project,
+  budget, remarks, owner, visibility, status, createTime, nextSurveyDate, sharedUsers
+})
 
 const fetchData = async () => {
-  const res = await axios.get(`${API}/surveys`, {
-    params: {
-      status: listStatus.value === '全部' ? '' : listStatus.value,
-      keyword: searchQuery.keyword,
-      city: searchQuery.city,
+  try {
+    const params = {
+      status: dueOnly.value ? '未处理' : (listStatus.value === '全部' ? '' : listStatus.value),
+      keyword: searchQuery.keyword.trim(),
+      city: '',
       page: page.value,
-      size: 20
+      size: orderPageSize.value
     }
-  })
-  surveys.value = res.data.data; totalPages.value = res.data.pages; totalCount.value = res.data.total
+    if (dueOnly.value) params.revisit = 'due'
+    const res = await axios.get(`${API}/surveys`, { params })
+    applySurveyResponse(res.data)
+    fetchRevisitCount()
+  } catch (e) {
+    alert(getApiErrorMessage(e, '回访记录加载失败，请稍后重试'))
+  }
 }
 
-const doSearch = () => { page.value = 1; fetchData(); }
-const resetSearch = () => { searchQuery.keyword = ''; searchQuery.city = ''; doSearch(); }
+const fetchRevisitCount = async () => {
+  try {
+    const res = await axios.get(`${API}/surveys/revisit-count`)
+    revisitTodayCount.value = res.data?.today || 0
+    revisitOverdueCount.value = res.data?.overdue || 0
+    revisitDueCount.value = res.data?.due ?? (revisitTodayCount.value + revisitOverdueCount.value)
+  } catch (e) {
+    console.error(getApiErrorMessage(e, '待回访统计加载失败'))
+  }
+}
+
+const selectRevisitTab = () => {
+  dueOnly.value = true
+  listStatus.value = '未处理'
+  page.value = 1
+  fetchData()
+}
+
+const selectListStatus = (status) => {
+  dueOnly.value = false
+  listStatus.value = status
+  doSearch()
+}
+
+const doSearch = () => { searchQuery.city = ''; page.value = 1; fetchData(); }
 
 const refreshAll = () => { fetchData(); fetchPendingCount(); refreshNoticeData(); }
+
+const sweepRevealedPhones = () => {
+  nowTick.value = Date.now()
+  for (const [id, value] of revealedPhones.entries()) {
+    if (!value || value.expiresAt <= nowTick.value) {
+      revealedPhones.delete(id)
+    }
+  }
+}
+
+const revealSelectedPhone = async () => {
+  if (!selectedSurvey.value) return
+  const surveyId = selectedSurvey.value.id
+  if (!beginPhoneRevealRequest(phoneRevealRequestState, surveyId)) return
+
+  try {
+    const res = await axios.post(`${API}/surveys/${surveyId}/phone/reveal`, {})
+    if (!res.data?.phoneDisplay) throw new Error('后端未返回手机号展示值')
+    const expiresAt = res.data.phoneRevealExpiresAt
+      ? Number(res.data.phoneRevealExpiresAt)
+      : (res.data.expiresInSeconds ? Date.now() + Number(res.data.expiresInSeconds) * 1000 : Number.POSITIVE_INFINITY)
+    const revealEntry = { phoneRevealed: true, phoneDisplay: res.data.phoneDisplay, expiresAt }
+    revealedPhones.set(surveyId, revealEntry)
+    if (res.data.sessionActivated) {
+      // ON: whole login session revealed; hide the eye, the list now shows full numbers.
+      selectedSurvey.value.canRevealPhone = false
+      selectedSurvey.value.phoneRevealStatus = res.data.phoneRevealStatus || 'SESSION_ACTIVATED'
+    } else {
+      // OFF: only this order, for 300s. Keep the eye so it can be re-revealed after expiry.
+      selectedSurvey.value.phoneRevealStatus = res.data.phoneRevealStatus || 'SINGLE_ORDER_REVEALED'
+    }
+    // Refresh so the server-side grant (ON: whole session / OFF: this order's 300s window) drives the list.
+    await fetchData()
+    revealedPhones.set(surveyId, revealEntry)
+    sweepRevealedPhones()
+  } catch (e) {
+    if (axios.isAxiosError(e) && e.response?.status === 401) clearPhoneRevealState()
+    alert(getApiErrorMessage(e, '查看完整手机号失败'))
+  } finally {
+    finishPhoneRevealRequest(phoneRevealRequestState, surveyId)
+  }
+}
 
 const submitAdd = async () => {
   if(!form.value.name) return alert('请填写称呼');
@@ -888,6 +1227,7 @@ const submitAdd = async () => {
   if(res.data.success) {
     alert('录入成功！');
     form.value = { name: '', phone: '', wechat: '', city: '', socialAccount: '', project: '', budget: '', remarks: '', remindDays: 3 };
+    closeSurveyForm()
     refreshAll()
   } else { alert(res.data.message); }
 }
@@ -907,9 +1247,21 @@ const saveRemarks = async () => {
 }
 
 const updateDate = async (id, newDate) => {
-  await axios.put(`${API}/surveys/${id}/date`, { date: newDate });
-  if(selectedSurvey.value) selectedSurvey.value.nextSurveyDate = newDate;
-  fetchData();
+  if (!newDate) return
+  reminderSaveState.value = 'saving'
+  reminderSaveMessage.value = '保存中...'
+  try {
+    const res = await axios.put(`${API}/surveys/${id}/date`, { date: newDate })
+    const savedDate = res.data?.nextSurveyDate || newDate
+    if(selectedSurvey.value) selectedSurvey.value.nextSurveyDate = savedDate
+    reminderSaveState.value = 'saved'
+    const savedLabel = formatRevisitDate(savedDate)
+    reminderSaveMessage.value = savedLabel ? `已保存，下次回访 ${savedLabel}` : '已保存'
+    fetchData()
+  } catch (e) {
+    reminderSaveState.value = 'error'
+    reminderSaveMessage.value = getApiErrorMessage(e, '保存失败，请重试')
+  }
 }
 
 const updateShare = async (item) => {
@@ -937,6 +1289,29 @@ const fetchUsers = async () => {
     });
   } catch (e) {
     alert(getApiErrorMessage(e, '员工列表加载失败'));
+  }
+}
+
+const saveSystemSettings = async () => {
+  if (user.role !== 'admin') return alert('仅管理员可操作')
+  const nextPageSize = clampOrderPageSize(systemSettingsForm.orderPageSize)
+  try {
+    isSystemSettingsSaving.value = true
+    const res = await axios.put(`${API}/admin/system-settings`, {
+      phoneDisplayPolicy: systemSettingsForm.phoneDisplayPolicy,
+      orderPageSize: nextPageSize
+    })
+    systemSettingsForm.phoneDisplayPolicy = res.data.phoneDisplayPolicy || systemSettingsForm.phoneDisplayPolicy
+    systemSettingsForm.orderPageSize = clampOrderPageSize(res.data.orderPageSize || nextPageSize)
+    orderPageSize.value = systemSettingsForm.orderPageSize
+    alert('系统设置已保存。')
+    closeSystemSettings()
+    page.value = 1
+    await fetchData()
+  } catch (e) {
+    alert(getApiErrorMessage(e, '系统设置保存失败'))
+  } finally {
+    isSystemSettingsSaving.value = false
   }
 }
 
@@ -1001,7 +1376,29 @@ const buildRemarkPreview = (remarks) => {
 }
 
 const stripTime = (d) => d ? d.split(' ')[0] : ''
-const isOverdue = (d) => d && new Date(d) < new Date()
+
+const formatRevisitDate = (value) => {
+  const ymd = stripTime(value || '')
+  const parts = ymd.split('-')
+  if (parts.length !== 3) return ''
+  const month = Number(parts[1])
+  const day = Number(parts[2])
+  if (!month || !day) return ''
+  return `${month}月${day}日`
+}
+
+const revisitTag = (item) => {
+  if (!item || item.status !== '未处理' || !item.nextSurveyDate) return { type: null, text: '' }
+  const ymd = stripTime(item.nextSurveyDate)
+  if (!ymd) return { type: null, text: '' }
+  if (ymd === todayDate) return { type: 'today', text: '今日回访' }
+  if (ymd < todayDate) {
+    const diffMs = new Date(`${todayDate}T00:00:00`).getTime() - new Date(`${ymd}T00:00:00`).getTime()
+    const days = Math.max(1, Math.ceil(diffMs / 86400000))
+    return { type: 'overdue', text: `已逾期 ${days} 天` }
+  }
+  return { type: null, text: '' }
+}
 const logout = () => {
   if(confirm('确定要安全退出系统吗？')) {
     void axios.post(`${casdoorBaseUrl}/api/logout`, null, { withCredentials: true }).catch(() => {})
@@ -1024,6 +1421,7 @@ const logout = () => {
 
 onMounted(async () => {
   window.addEventListener('click', handleGlobalClick)
+  revealSweepTimer = window.setInterval(sweepRevealedPhones, 1000)
   if (DISABLED_AUTH_PATHS.has(window.location.pathname)) {
     replaceWithLogin('/')
   }
@@ -1049,6 +1447,7 @@ onMounted(async () => {
 })
 onUnmounted(() => {
   window.removeEventListener('click', handleGlobalClick)
+  if (revealSweepTimer) window.clearInterval(revealSweepTimer)
 })
 </script>
 
@@ -1658,22 +2057,15 @@ onUnmounted(() => {
 }
 
 .search-filter-bar {
-  padding: 14px;
+  padding: 10px;
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
-}
-
-.search-inputs {
-  display: flex;
-  gap: 10px;
-  flex: 1;
-  min-width: 240px;
 }
 
 .search-input {
   flex: 1;
+  min-width: 0;
   border: 1px solid #d2dce8;
   border-radius: 12px;
   background: #fff;
@@ -1682,12 +2074,8 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-.search-actions {
-  display: flex;
-  gap: 8px;
-}
-
 .btn-search {
+  flex: 0 0 96px;
   padding: 11px 18px;
   font-weight: 700;
   border: 1px solid #1d4ed8 !important;
@@ -1696,20 +2084,24 @@ onUnmounted(() => {
   box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18) !important;
 }
 
-.btn-reset {
-  border-radius: 12px;
-  border: 1px solid rgba(37, 99, 235, 0.5);
-  background: #dbeafe;
-  color: #1e40af;
-  font-weight: 700;
-  padding: 11px 16px;
-  cursor: pointer;
-  transition: transform 0.16s ease, filter 0.2s ease;
+.create-record-row {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: -2px;
 }
 
-.btn-reset:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.04);
+.btn-add-fluid.btn-create-record {
+  width: fit-content;
+  max-width: 100%;
+  min-height: 38px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  border: 1px solid #bfdbfe !important;
+  background: #eff6ff !important;
+  color: #1d4ed8 !important;
+  box-shadow: none !important;
+  font-size: 14px;
+  line-height: 1.2;
 }
 
 .form-card {
@@ -1750,7 +2142,6 @@ onUnmounted(() => {
   box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18) !important;
 }
 
-.search-actions .btn-search,
 .form-grid-fluid > .btn-add-fluid {
   border: 1px solid #1d4ed8 !important;
   background: #1d4ed8 !important;
@@ -1817,6 +2208,82 @@ onUnmounted(() => {
   flex-wrap: wrap;
 }
 
+.bulk-policy-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0;
+  color: #1f2937;
+  font-size: 0.95rem;
+}
+
+.policy-subtitle {
+  margin-top: 4px;
+  color: #667085;
+  font-size: 0.8rem;
+}
+
+.phone-policy-modal {
+  max-width: 720px;
+}
+
+.policy-warning {
+  margin: 0 0 16px;
+  color: #475467;
+  line-height: 1.6;
+}
+
+.policy-field {
+  display: grid;
+  gap: 6px;
+  color: #344054;
+  font-size: 0.92rem;
+}
+
+.policy-field select,
+.policy-field input {
+  width: 100%;
+}
+
+/* "手机号隐私设置" 滑动开关：ON=滑左/绿底，OFF=滑右/红底 */
+.privacy-toggle {
+  position: relative;
+  justify-self: start;
+  width: 76px;
+  height: 30px;
+  border: 0;
+  border-radius: 999px;
+  padding: 0;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+.privacy-toggle.is-on { background: #16a34a; }
+.privacy-toggle.is-off { background: #dc2626; }
+.privacy-toggle-knob {
+  position: absolute;
+  top: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  transition: left 0.2s ease;
+}
+.privacy-toggle.is-on .privacy-toggle-knob { left: 3px; }
+.privacy-toggle.is-off .privacy-toggle-knob { left: calc(100% - 27px); }
+.privacy-toggle-text {
+  position: absolute;
+  top: 0;
+  line-height: 30px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: #fff;
+}
+.privacy-toggle.is-on .privacy-toggle-text { right: 12px; }
+.privacy-toggle.is-off .privacy-toggle-text { left: 12px; }
+
 .btn-inline,
 .btn-inline-danger {
   border: 0;
@@ -1830,6 +2297,44 @@ onUnmounted(() => {
 .btn-inline {
   color: #1e3a8a;
   background: #dbeafe;
+}
+
+.btn-eye {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #1d4ed8;
+  background: #eff6ff;
+  cursor: pointer;
+}
+
+.btn-eye:hover {
+  background: #dbeafe;
+}
+
+.btn-eye:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.btn-eye:focus-visible {
+  outline: 2px solid #2563eb;
+  outline-offset: 2px;
+}
+
+.eye-icon {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
 }
 
 .btn-inline-danger {
@@ -1869,10 +2374,64 @@ onUnmounted(() => {
   display: inline-block;
   border-radius: 999px;
   padding: 2px 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
   color: #991b1b;
   background: #fee2e2;
+}
+
+.amber-tag {
+  margin-top: 6px;
+  display: inline-block;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.revisit-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 8px 14px;
+  border: 1px solid #fcd9b6;
+  border-radius: 12px;
+  background: #fff7ed;
+  color: #9a3412;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease;
+}
+
+.revisit-summary:hover {
+  border-color: #f59e0b;
+  background: #ffedd5;
+}
+
+.revisit-summary.active {
+  border-color: #f59e0b;
+  background: #ffedd5;
+}
+
+.revisit-summary-sep {
+  color: #c2410c;
+  opacity: 0.6;
+}
+
+.revisit-summary-overdue {
+  color: #b91c1c;
+}
+
+.revisit-summary-empty {
+  border-color: var(--line);
+  background: transparent;
+  color: var(--ink-sub);
+  font-weight: 500;
+  cursor: default;
 }
 
 .highlight-text {
@@ -1884,6 +2443,11 @@ onUnmounted(() => {
   margin: 2px 0;
   color: #64748b;
   font-size: 13px;
+}
+
+.phone-reveal-row {
+  align-items: center;
+  gap: 8px;
 }
 
 .remark-inline {
@@ -2243,6 +2807,14 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
+.create-survey-modal {
+  width: min(720px, 100%);
+}
+
+.create-survey-form {
+  padding: 18px;
+}
+
 .modal-header {
   padding: 16px 18px;
   display: flex;
@@ -2261,8 +2833,9 @@ onUnmounted(() => {
   border: 0;
   background: #dbeafe;
   color: #1e3a8a;
-  width: 30px;
-  height: 30px;
+  min-width: 52px;
+  min-height: 32px;
+  padding: 0 10px;
   border-radius: 9px;
   cursor: pointer;
   font-weight: 700;
@@ -2373,16 +2946,46 @@ onUnmounted(() => {
 }
 
 .reminder-row-modal {
-  background: #eff6ff;
-  border: 1px solid #dbeafe;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .reminder-row-modal .lbl {
+  color: #0f172a;
+}
+
+.reminder-copy {
+  display: grid;
+  gap: 3px;
+  min-width: 220px;
+}
+
+.reminder-help,
+.reminder-status {
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.reminder-help {
+  color: #64748b;
+}
+
+.reminder-status.saved {
+  color: #047857;
+}
+
+.reminder-status.error {
+  color: #b91c1c;
+}
+
+.reminder-status.saving {
   color: #1d4ed8;
 }
 
@@ -2581,20 +3184,6 @@ onUnmounted(() => {
     align-items: stretch;
   }
 
-  .search-inputs {
-    min-width: 100%;
-    flex-direction: column;
-  }
-
-  .search-actions {
-    width: 100%;
-  }
-
-  .btn-search,
-  .btn-reset {
-    flex: 1;
-  }
-
   .form-grid-fluid {
     grid-template-columns: 1fr;
   }
@@ -2632,4 +3221,3 @@ onUnmounted(() => {
   }
 }
 </style>
-

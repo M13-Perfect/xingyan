@@ -3,6 +3,8 @@ package org.example.xyyx.controller;
 import org.example.xyyx.service.CurrentUserService;
 import org.example.xyyx.service.CurrentUserService.CurrentUser;
 import org.example.xyyx.service.NoticeService;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
@@ -16,6 +18,8 @@ import java.util.Map;
 @RequestMapping("/api/notices")
 @CrossOrigin
 public class NoticeController {
+
+    private static final Logger log = LoggerFactory.getLogger(NoticeController.class);
 
     private final NoticeService noticeService;
     private final CurrentUserService currentUserService;
@@ -54,12 +58,32 @@ public class NoticeController {
             @RequestParam(defaultValue = "ALL") String status,
             @RequestParam(defaultValue = "1") int page,
             @RequestParam(defaultValue = "10") int size) {
-        return noticeService.listNotices(currentUserService.requireUser(jwt).username(), status, page, size);
+        try {
+            return noticeService.listNotices(currentUserService.requireUser(jwt).username(), status, page, size);
+        } catch (Exception e) {
+            log.error("failed to list notices", e);
+            Map<String, Object> result = new HashMap<>();
+            result.put("data", new ArrayList<>());
+            result.put("total", 0);
+            result.put("pages", 1);
+            result.put("success", false);
+            result.put("message", "failed to load notices");
+            return result;
+        }
     }
 
     @GetMapping("/unread-count")
     public Map<String, Object> unreadCount(@AuthenticationPrincipal Jwt jwt) {
-        return Map.of("count", noticeService.getUnreadCount(currentUserService.requireUser(jwt).username()));
+        try {
+            return Map.of("count", noticeService.getUnreadCount(currentUserService.requireUser(jwt).username()));
+        } catch (Exception e) {
+            log.error("failed to get unread notice count", e);
+            Map<String, Object> result = new HashMap<>();
+            result.put("count", 0);
+            result.put("success", false);
+            result.put("message", "failed to load unread count");
+            return result;
+        }
     }
 
     @PutMapping("/read")
