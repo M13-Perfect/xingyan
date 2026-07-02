@@ -36,6 +36,12 @@ public class GlobalExceptionHandler {
         return error(status, e.code(), message(e.code()), request);
     }
 
+    @ExceptionHandler(org.springframework.dao.DuplicateKeyException.class)
+    public ResponseEntity<Map<String, Object>> handleDuplicate(org.springframework.dao.DuplicateKeyException e, HttpServletRequest request) {
+        // 唯一索引冲突（电话/微信重复录入）不是服务器故障，给用户可行动的 400 提示而非 500。
+        return error(HttpStatus.BAD_REQUEST, "DUPLICATE_VALUE", "电话或微信已存在，请勿重复录入", request);
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleAny(Exception e, HttpServletRequest request) {
         // 500 必须留痕：带 requestId 记完整堆栈，否则线上只有一个无内容的 INTERNAL_SERVER_ERROR 无从排查。
@@ -65,6 +71,8 @@ public class GlobalExceptionHandler {
             case "PHONE_SESSION_UNAVAILABLE" -> "手机号会话显示状态不可用，请先完成系统设置迁移";
             case "SURVEY_NOT_FOUND" -> "资源不存在";
             case "PHONE_PRIVACY_NOT_READY" -> "手机号隐私数据尚未完成迁移，请联系管理员处理";
+            case "PHONE_INVALID" -> "手机号格式不正确，请输入正确的 11 位手机号（如 13812345678）";
+            case "PHONE_ALREADY_EXISTS" -> "该手机号已存在，请勿重复录入";
             case "PHONE_REVEAL_TOO_FREQUENT", "PHONE_REVEAL_SESSION_TOO_FREQUENT" -> "操作过于频繁，请稍后再试";
             case "PHONE_DECRYPT_FAILED" -> "手机号解密失败，请联系管理员";
             case "AUDIT_LOG_UNAVAILABLE" -> "个人信息访问审计不可用，请联系管理员";

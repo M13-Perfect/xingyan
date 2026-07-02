@@ -131,8 +131,10 @@ public class SurveyController {
         String role = payload.getOrDefault("role", "staff");
         String nickname = payload.get("nickname") == null ? null : payload.get("nickname").trim();
         if (username == null || username.isBlank()) return "账号不能为空";
+        // Casdoor 的用户名只接受字母/数字/下划线/连字符；这里前置校验并给出明确格式与长度，避免落到 Casdoor 侧变成 500。
+        if (!username.matches("[A-Za-z0-9_-]{2,20}")) return "账号格式不正确：仅支持字母、数字、下划线、连字符，长度 2-20 位";
         if (encryptedPassword == null || encryptedPassword.isBlank()) return "初始密码不能为空";
-        if (nickname != null && nickname.length() > 50) return "昵称最长 50 字";
+        if (nickname != null && nickname.length() > 50) return "昵称格式不正确：最长 50 字";
         if ("admin".equalsIgnoreCase(role)) return "禁止创建管理员账号";
 
         if (!"staff".equalsIgnoreCase(role)) return "仅允许创建业务专员";
@@ -148,7 +150,7 @@ public class SurveyController {
             return "密码解密失败";
         }
 
-        if (plainPassword.length() < 6) return "密码长度至少 6 位";
+        if (plainPassword.length() < 6 || plainPassword.length() > 32) return "密码格式不正确：长度需为 6-32 位";
 
         String passwordHash = passwordEncoder.encode(plainPassword);
         jdbcTemplate.update("INSERT INTO user (username, password, role) VALUES (?, ?, ?)", username, passwordHash, role);
@@ -211,7 +213,7 @@ public class SurveyController {
         } catch (IllegalArgumentException e) {
             return "密码解密失败";
         }
-        if (plainPassword.length() < 6) return "密码长度至少 6 位";
+        if (plainPassword.length() < 6 || plainPassword.length() > 32) return "密码格式不正确：长度需为 6-32 位";
 
         String passwordHash = passwordEncoder.encode(plainPassword);
         jdbcTemplate.update("UPDATE user SET password = ? WHERE id = ?", passwordHash, id);
@@ -237,7 +239,7 @@ public class SurveyController {
         } catch (IllegalArgumentException e) {
             return "密码解密失败";
         }
-        if (newPlainPassword.length() < 6) return "新密码长度至少 6 位";
+        if (newPlainPassword.length() < 6 || newPlainPassword.length() > 32) return "新密码格式不正确：长度需为 6-32 位";
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT password FROM user WHERE username = ?", currentUser.username());
         if (rows.isEmpty()) return "账号不存在";

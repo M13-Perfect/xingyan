@@ -214,9 +214,9 @@
           <div class="form-card user-form-bg">
             <h4 class="form-title"> 开通新员工</h4>
             <div class="form-grid-fluid">
-              <input v-model="userForm.username" placeholder="设置账号（登录用，仅限字母/数字/下划线/连字符）" class="text-black">
-              <input v-model="userForm.nickname" placeholder="设置昵称（可选，默认与账号相同）" class="text-black">
-              <input v-model="userForm.password" type="password" placeholder="设置初始密码" class="text-black">
+              <input v-model="userForm.username" placeholder="设置账号（字母/数字/下划线/连字符，2-20 位）" class="text-black">
+              <input v-model="userForm.nickname" placeholder="设置昵称（可选，最长 50 字，默认与账号相同）" class="text-black">
+              <input v-model="userForm.password" type="password" placeholder="设置初始密码（6-32 位）" class="text-black">
               <button @click="submitAddUser" class="btn-add-fluid dark">确认开通</button>
             </div>
           </div>
@@ -362,7 +362,7 @@
 
           <form class="modal-body form-grid-fluid create-survey-form" @submit.prevent="submitAdd">
             <input v-model="form.name" placeholder="称呼 (必填)" class="text-black">
-            <input v-model="form.phone" placeholder="电话 (不可重复)" class="text-black">
+            <input v-model="form.phone" placeholder="电话（11 位手机号，不可重复）" class="text-black">
             <input v-model="form.wechat" placeholder="微信 (不可重复)" class="text-black">
             <input v-model="form.city" placeholder="城市" class="text-black">
             <input v-model="form.socialAccount" placeholder="社交账号" class="text-black">
@@ -1355,15 +1355,22 @@ const revealSelectedPhone = async () => {
 
 const submitAdd = async () => {
   if(!form.value.name) return alert('请填写称呼');
+  // 与后端 libphonenumber(CN) 对齐的宽松前置校验：先拦住明显不是手机号的输入，最终以后端为准。
+  const rawPhone = (form.value.phone || '').replace(/[\s()-]/g, '')
+  if (rawPhone && !/^(\+?86)?1\d{10}$/.test(rawPhone)) return alert('手机号格式不正确，请输入正确的 11 位手机号（如 13812345678）');
   if(!confirm(`确认将客户 [${form.value.name}] 的信息录入系统吗？`)) return;
 
-  const res = await axios.post(`${API}/surveys`, form.value)
-  if(res.data.success) {
-    alert('录入成功！');
-    form.value = { name: '', phone: '', wechat: '', city: '', socialAccount: '', project: '', budget: '', remarks: '', remindDays: 3 };
-    closeSurveyForm()
-    refreshAll()
-  } else { alert(res.data.message); }
+  try {
+    const res = await axios.post(`${API}/surveys`, form.value)
+    if(res.data.success) {
+      alert('录入成功！');
+      form.value = { name: '', phone: '', wechat: '', city: '', socialAccount: '', project: '', budget: '', remarks: '', remindDays: 3 };
+      closeSurveyForm()
+      refreshAll()
+    } else { alert(res.data.message); }
+  } catch (e) {
+    alert(getApiErrorMessage(e, '录入失败，请稍后重试'))
+  }
 }
 
 const processTask = async (id) => {
@@ -1462,7 +1469,10 @@ const saveSystemSettings = async () => {
 const submitAddUser = async () => {
   if (user.role !== 'admin') return alert('仅管理员可操作');
   if(!userForm.value.username) return alert('请填写账号');
+  if(!/^[A-Za-z0-9_-]{2,20}$/.test(userForm.value.username)) return alert('账号格式不正确：仅支持字母、数字、下划线、连字符，长度 2-20 位');
+  if((userForm.value.nickname || '').trim().length > 50) return alert('昵称格式不正确：最长 50 字');
   if(!userForm.value.password) return alert('请填写初始密码');
+  if(userForm.value.password.length < 6 || userForm.value.password.length > 32) return alert('密码格式不正确：长度需为 6-32 位');
   if(!confirm(`确认开通名为 [${userForm.value.username}] 的新员工账号吗？`)) return;
   try {
     const encryptedPassword = await encryptPassword(userForm.value.password);
