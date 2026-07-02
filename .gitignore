@@ -17,7 +17,7 @@ xyyx/src/main/resources/application-*.properties
 *.log
 logs/
 runtime-logs/
-.claude/session-log.md
+.claude/
 .docker-tmp/
 
 # Deployment artifacts and packaged binaries (built/zipped, may carry prod secrets)

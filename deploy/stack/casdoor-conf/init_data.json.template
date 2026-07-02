@@ -1,0 +1,32 @@
+{
+  "organizations": [
+    {
+      "owner": "admin",
+      "name": "xyyx",
+      "displayName": "XYYX Organization",
+      "passwordType": "bcrypt",
+      "languages": ["zh"]
+    }
+  ],
+  "applications": [
+    {
+      "owner": "admin",
+      "name": "xyyx",
+      "displayName": "XYYX SSO",
+      "organization": "xyyx",
+      "cert": "cert-built-in",
+      "clientId": "xyyx-web",
+      "clientSecret": "__CASDOOR_CLIENT_SECRET__",
+      "redirectUris": ["__FRONTEND_PUBLIC_URL__/auth/callback"],
+      "tokenFormat": "JWT",
+      "expireInHours": 168,
+      "refreshExpireInHours": 168,
+      "grantTypes": ["authorization_code"],
+      "enablePassword": true,
+      "enableSignUp": false,
+      "signinMethods": [
+        { "name": "Password", "displayName": "Password", "rule": "All" }
+      ]
+    }
+  ]
+}
