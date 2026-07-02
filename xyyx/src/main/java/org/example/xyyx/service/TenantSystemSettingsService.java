@@ -17,6 +17,9 @@ public class TenantSystemSettingsService {
     public static final int DEFAULT_ORDER_PAGE_SIZE = 20;
     private static final int MIN_ORDER_PAGE_SIZE = 1;
     private static final int MAX_ORDER_PAGE_SIZE = 100;
+    public static final int DEFAULT_REVISIT_DEADLINE_DAYS = 3;
+    private static final int MIN_REVISIT_DEADLINE_DAYS = 1;
+    private static final int MAX_REVISIT_DEADLINE_DAYS = 30;
 
     private final JdbcTemplate jdbcTemplate;
     private final PhoneRevealSessionService phoneRevealSessionService;
@@ -35,12 +38,12 @@ public class TenantSystemSettingsService {
         List<Map<String, Object>> rows;
         try {
             rows = jdbcTemplate.queryForList(
-                    "SELECT tenant_id, phone_display_policy, order_page_size, updated_at " +
+                    "SELECT tenant_id, phone_display_policy, order_page_size, revisit_deadline_days, updated_at " +
                             "FROM tenant_system_settings WHERE tenant_id = ? AND enabled = 1",
                     tenantId
             );
         } catch (BadSqlGrammarException e) {
-            // ponytail: rolling deploy fallback; run V20260630_001 before relying on saved settings.
+            // ponytail: rolling deploy fallback; run V20260630_001/V20260701_002 before relying on saved settings.
             return defaults(tenantId);
         }
         if (rows.isEmpty()) {
@@ -50,13 +53,14 @@ public class TenantSystemSettingsService {
         return new TenantSystemSettings(
                 string(row.get("tenant_id"), tenantId),
                 mode(row.get("phone_display_policy")),
-                clamp(integer(row.get("order_page_size"), DEFAULT_ORDER_PAGE_SIZE)),
+                clampOrderPageSize(integer(row.get("order_page_size"), DEFAULT_ORDER_PAGE_SIZE)),
+                clampRevisitDeadlineDays(integer(row.get("revisit_deadline_days"), DEFAULT_REVISIT_DEADLINE_DAYS)),
                 row.get("updated_at")
         );
     }
 
     public int resolvePageSize(String tenantId, Integer requestedSize) {
-        return clamp(requestedSize == null ? getEffectiveSettings(tenantId).orderPageSize() : requestedSize);
+        return clampOrderPageSize(requestedSize == null ? getEffectiveSettings(tenantId).orderPageSize() : requestedSize);
     }
 
     @Transactional
@@ -67,13 +71,15 @@ public class TenantSystemSettingsService {
         TenantSystemSettingsInput input = TenantSystemSettingsInput.from(payload);
         jdbcTemplate.update(
                 "INSERT INTO tenant_system_settings " +
-                        "(tenant_id, phone_display_policy, order_page_size, enabled, created_by, updated_by, created_at, updated_at) " +
-                        "VALUES (?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
+                        "(tenant_id, phone_display_policy, order_page_size, revisit_deadline_days, enabled, created_by, updated_by, created_at, updated_at) " +
+                        "VALUES (?, ?, ?, ?, 1, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP) " +
                         "ON DUPLICATE KEY UPDATE phone_display_policy = VALUES(phone_display_policy), order_page_size = VALUES(order_page_size), " +
+                        "revisit_deadline_days = VALUES(revisit_deadline_days), " +
                         "enabled = 1, updated_by = VALUES(updated_by), updated_at = CURRENT_TIMESTAMP",
                 tenantId,
                 input.phoneDisplayPolicy().name(),
                 input.orderPageSize(),
+                input.revisitDeadlineDays(),
                 operatorUserId,
                 operatorUserId
         );
@@ -104,7 +110,8 @@ public class TenantSystemSettingsService {
                     operator.username(),
                     CurrentUserService.PRIVACY_POLICY_MANAGE,
                     "oldPolicy=" + oldSettings.phoneDisplayPolicy() + ";newPolicy=" + input.phoneDisplayPolicy()
-                            + ";oldOrderPageSize=" + oldSettings.orderPageSize() + ";newOrderPageSize=" + input.orderPageSize(),
+                            + ";oldOrderPageSize=" + oldSettings.orderPageSize() + ";newOrderPageSize=" + input.orderPageSize()
+                            + ";oldRevisitDeadlineDays=" + oldSettings.revisitDeadlineDays() + ";newRevisitDeadlineDays=" + input.revisitDeadlineDays(),
                     request == null ? null : request.getRemoteAddr(),
                     request == null ? null : trim(request.getHeader("User-Agent"), 500),
                     request == null || request.getAttribute("requestId") == null ? null : request.getAttribute("requestId").toString()
@@ -115,7 +122,8 @@ public class TenantSystemSettingsService {
     }
 
     private static TenantSystemSettings defaults(String tenantId) {
-        return new TenantSystemSettings(tenantId, GlobalPhoneDisplayPolicyMode.CLICK_TO_SESSION_VISIBLE, DEFAULT_ORDER_PAGE_SIZE, null);
+        return new TenantSystemSettings(tenantId, GlobalPhoneDisplayPolicyMode.CLICK_TO_SESSION_VISIBLE, DEFAULT_ORDER_PAGE_SIZE,
+                DEFAULT_REVISIT_DEADLINE_DAYS, null);
     }
 
     private static GlobalPhoneDisplayPolicyMode mode(Object value) {
@@ -129,8 +137,15 @@ public class TenantSystemSettingsService {
         }
     }
 
-    private static int clamp(int value) {
+    private static int clampOrderPageSize(int value) {
         if (value < MIN_ORDER_PAGE_SIZE || value > MAX_ORDER_PAGE_SIZE) {
+            throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST");
+        }
+        return value;
+    }
+
+    private static int clampRevisitDeadlineDays(int value) {
+        if (value < MIN_REVISIT_DEADLINE_DAYS || value > MAX_REVISIT_DEADLINE_DAYS) {
             throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST");
         }
         return value;
@@ -152,11 +167,16 @@ public class TenantSystemSettingsService {
             String tenantId,
             GlobalPhoneDisplayPolicyMode phoneDisplayPolicy,
             int orderPageSize,
+            int revisitDeadlineDays,
             Object updatedAt
     ) {
     }
 
-    private record TenantSystemSettingsInput(GlobalPhoneDisplayPolicyMode phoneDisplayPolicy, int orderPageSize) {
+    private record TenantSystemSettingsInput(
+            GlobalPhoneDisplayPolicyMode phoneDisplayPolicy,
+            int orderPageSize,
+            int revisitDeadlineDays
+    ) {
         static TenantSystemSettingsInput from(Map<String, Object> payload) {
             if (payload == null) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST");
@@ -167,7 +187,11 @@ public class TenantSystemSettingsService {
             } catch (IllegalArgumentException e) {
                 throw new ApiException(HttpStatus.BAD_REQUEST, "BAD_REQUEST");
             }
-            return new TenantSystemSettingsInput(mode, clamp(integer(payload.get("orderPageSize"), DEFAULT_ORDER_PAGE_SIZE)));
+            return new TenantSystemSettingsInput(
+                    mode,
+                    clampOrderPageSize(integer(payload.get("orderPageSize"), DEFAULT_ORDER_PAGE_SIZE)),
+                    clampRevisitDeadlineDays(integer(payload.get("revisitDeadlineDays"), DEFAULT_REVISIT_DEADLINE_DAYS))
+            );
         }
     }
 }

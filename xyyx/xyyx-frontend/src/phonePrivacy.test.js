@@ -125,12 +125,15 @@ test('next follow-up date UI explains real behavior and reports save state', () 
 
 test('revisit list tags distinguish today vs overdue follow-ups', () => {
   const app = readFileSync(new URL('./App.vue', import.meta.url), 'utf8')
+  const revisit = readFileSync(new URL('./revisit.js', import.meta.url), 'utf8')
 
-  assert.match(app, /今日回访/)
-  assert.match(app, /已逾期 \$\{days\} 天/)
+  assert.match(revisit, /今日回访/)
+  assert.match(revisit, /已逾期 \$\{overdueDays\} 天/)
   assert.match(app, /revisitTag/)
+  assert.match(app, /surveyStatusBadge/)
   assert.match(app, /amber-tag/)
   assert.doesNotMatch(app, /需复访/)
+  assert.doesNotMatch(app, /red-tag/)
 })
 
 test('revisit filter tab and summary entry drive the due query', () => {

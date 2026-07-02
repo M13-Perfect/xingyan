@@ -11,11 +11,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Source-contract tests for the回访 (revisit) features, mirroring the assertion style of
  * {@link SurveyReminderDateTests}. They lock the frozen API contract that the前端 depends on:
  *   1. GET /api/surveys 的可选 revisit=due 过滤(列表 + 总数,admin/staff 两条路径)。
- *   2. GET /api/surveys/revisit-count 的 today/overdue/due 语义与范围隔离。
+ *   2. GET /api/surveys/revisit-count 的 today/overdue/due 语义与范围隔离,含可配置回访时限宽限期。
  *
  * The behavioural intent each assertion encodes:
- *   - revisit-count: 一条今天到期未处理 → today=1;一条已逾期未处理 → overdue=1;
- *     一条未来未处理、一条已逾期但已处理 → 都不计入;due = today + overdue = 2。
+ *   - revisit-count: 一条今天到期未处理 → today=1;一条已过"回访日期 + 回访时限"未处理 → overdue=1;
+ *     一条未来未处理、一条仍在回访时限宽限期内未处理、一条已逾期但已处理 → 都不计入;due = today + overdue。
  *   - staff 范围隔离:revisit-count 与列表都对 staff 追加 STAFF_SCOPE,别人 private 的不可见。
  *   - revisit=due 列表:只返回 next_survey_date < 明天零点(即今天到期 + 已逾期)的记录。
  */
@@ -54,29 +54,33 @@ class SurveyRevisitCountTests {
         assertTrue(controller.contains("public Map<String, Object> getRevisitCount(@AuthenticationPrincipal Jwt jwt)"));
         assertTrue(controller.contains("currentUserService.requireUser(jwt)"));
 
-        // Boundaries: todayStart = 今天零点, tomorrowStart = todayStart + 1 天。
+        // Boundaries: todayStart = 今天零点, tomorrowStart = todayStart + 1 天,
+        // overdueCutoff = todayStart - 回访时限天数(全局系统设置,默认3天,管理员可配置1~30)。
         assertTrue(controller.contains("LocalDateTime todayStart = LocalDate.now().atStartOfDay()"));
         assertTrue(controller.contains("LocalDateTime tomorrowStart = todayStart.plusDays(1)"));
+        assertTrue(controller.contains(
+                "int revisitDeadlineDays = tenantSystemSettingsService.getEffectiveSettings(DEFAULT_TENANT_ID).revisitDeadlineDays()"));
+        assertTrue(controller.contains("LocalDateTime overdueCutoff = todayStart.minusDays(revisitDeadlineDays)"));
 
-        // Admin sees whole tenant; staff goes through the username-scoped variants.
+        // Admin sees whole tenant; staff goes through the username-scoped variants. Overdue counting
+        // uses overdueCutoff (todayStart shifted back by the configured grace period), not todayStart.
         assertTrue(controller.contains("countRevisitTodayAdmin(DEFAULT_TENANT_ID, todayStart, tomorrowStart)"));
-        assertTrue(controller.contains("countRevisitOverdueAdmin(DEFAULT_TENANT_ID, todayStart)"));
+        assertTrue(controller.contains("countRevisitOverdueAdmin(DEFAULT_TENANT_ID, overdueCutoff)"));
         assertTrue(controller.contains("countRevisitTodayStaff(currentUser.username(), DEFAULT_TENANT_ID, todayStart, tomorrowStart)"));
-        assertTrue(controller.contains("countRevisitOverdueStaff(currentUser.username(), DEFAULT_TENANT_ID, todayStart)"));
+        assertTrue(controller.contains("countRevisitOverdueStaff(currentUser.username(), DEFAULT_TENANT_ID, overdueCutoff)"));
 
         // Response field names are frozen: today / overdue / due, with due = today + overdue.
         assertTrue(controller.contains("response.put(\"today\", today)"));
         assertTrue(controller.contains("response.put(\"overdue\", overdue)"));
         assertTrue(controller.contains("response.put(\"due\", today + overdue)"));
 
-        // Counting SQL: only 未处理 counts; today is the half-open window [start, end); overdue is < end.
-        // 已处理 records and future records are therefore excluded, so today=1 / overdue=1 / due=2 for the
-        // documented data set. Whitespace/line-wrapping is normalized so the checks stay robust.
+        // Counting SQL itself is unchanged (still gated on 未处理, still "< #{end}"); the grace period is
+        // applied entirely on the Java side by shifting the #{end} argument passed in, so callers stay
+        // simple and get the same half-open-window semantics as before with a different cutoff instant.
         String mapperFlat = flatten(mapper);
         assertTrue(mapper.contains("int countRevisitTodayAdmin("));
         assertTrue(mapper.contains("int countRevisitOverdueAdmin("));
         assertTrue(mapperFlat.contains("status = '未处理' AND next_survey_date >= #{start} AND next_survey_date &lt; #{end}"));
-        // Overdue query: still gated on 未处理, and everything before #{end} (= todayStart) counts.
         assertTrue(mapperFlat.contains("countRevisitOverdueAdmin"));
         assertTrue(mapperFlat.contains("WHERE tenant_id = #{tenantId} AND status = '未处理' AND next_survey_date &lt; #{end}"));
     }

@@ -9,6 +9,7 @@ import org.springframework.web.client.RestClient;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -41,13 +42,13 @@ public class CasdoorAdminService {
      * 在 Casdoor 中创建用户。失败抛出 IllegalStateException，由调用方触发本地事务回滚。
      * 幂等：若用户已存在（msg 含 "exist"），视为成功直接返回。
      */
-    public void createUser(String username, String plainPassword) {
+    public void createUser(String username, String plainPassword, String displayName) {
         Map<String, Object> body = new HashMap<>();
         body.put("owner", organization);
         body.put("name", username);
         body.put("type", "normal-user");
         body.put("password", plainPassword);
-        body.put("displayName", username);
+        body.put("displayName", displayName);
         body.put("signupApplication", application);
 
         Map<String, Object> response;
@@ -73,6 +74,121 @@ public class CasdoorAdminService {
             return;
         }
         throw new IllegalStateException("Casdoor 创建用户失败: " + msg);
+    }
+
+    /**
+     * 同步修改 Casdoor 用户密码（管理员重置 / 用户自助改密码时调用）。
+     */
+    public void updateUserPassword(String username, String plainPassword) {
+        updateUserFields(username, "password", Map.of(
+                "owner", organization,
+                "name", username,
+                "password", plainPassword
+        ));
+    }
+
+    /**
+     * 同步修改 Casdoor 用户昵称（displayName）。
+     */
+    public void updateUserDisplayName(String username, String displayName) {
+        updateUserFields(username, "displayName", Map.of(
+                "owner", organization,
+                "name", username,
+                "displayName", displayName
+        ));
+    }
+
+    /**
+     * columns 必须显式指定，否则 Casdoor /api/update-user 会用请求体里没带到的字段覆盖成空值。
+     */
+    private void updateUserFields(String username, String columns, Map<String, Object> body) {
+        Map<String, Object> response;
+        try {
+            response = restClient.post()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/update-user")
+                            .queryParam("id", organization + "/" + username)
+                            .queryParam("columns", columns)
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, basicAuthHeader)
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(body)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Casdoor 更新用户失败: " + e.getMessage(), e);
+        }
+        String status = response == null ? null : asString(response.get("status"));
+        if (!"ok".equals(status)) {
+            String msg = response == null ? null : asString(response.get("msg"));
+            throw new IllegalStateException("Casdoor 更新用户失败: " + msg);
+        }
+    }
+
+    /**
+     * 批量获取组织下所有用户的昵称（displayName），用于工作台按 owner 展示昵称。
+     * 尽力而为：Casdoor 不可用或返回异常时返回空 Map，调用方应回退到用户名本身。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, String> listDisplayNames() {
+        Map<String, Object> response;
+        try {
+            response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/get-users")
+                            .queryParam("owner", organization)
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, basicAuthHeader)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (Exception e) {
+            return Map.of();
+        }
+        Object data = response == null ? null : response.get("data");
+        if (!(data instanceof List<?> rawList)) {
+            return Map.of();
+        }
+        Map<String, String> result = new HashMap<>();
+        for (Object item : rawList) {
+            if (!(item instanceof Map<?, ?> u)) continue;
+            String name = asString(u.get("name"));
+            String displayName = asString(u.get("displayName"));
+            if (name != null && displayName != null && !displayName.isBlank()) {
+                result.put(name, displayName);
+            }
+        }
+        return result;
+    }
+
+    /**
+     * 取单个用户的昵称/头像（个人中心展示用）。用 Basic(admin) 授权，避免前端持有可读 token 直连 Casdoor。
+     * 尽力而为：Casdoor 不可用或返回异常时返回空 Map，调用方回退到用户名。只放非空字段，便于调用方 getOrDefault。
+     */
+    @SuppressWarnings("unchecked")
+    public Map<String, String> getAccount(String username) {
+        Map<String, Object> response;
+        try {
+            response = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/api/get-user")
+                            .queryParam("id", organization + "/" + username)
+                            .build())
+                    .header(HttpHeaders.AUTHORIZATION, basicAuthHeader)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (Exception e) {
+            return Map.of();
+        }
+        Object data = response == null ? null : response.get("data");
+        if (!(data instanceof Map<?, ?> user)) {
+            return Map.of();
+        }
+        Map<String, String> result = new HashMap<>();
+        String displayName = asString(user.get("displayName"));
+        String avatar = asString(user.get("avatar"));
+        if (displayName != null && !displayName.isBlank()) result.put("displayName", displayName);
+        if (avatar != null && !avatar.isBlank()) result.put("avatar", avatar);
+        return result;
     }
 
     /**

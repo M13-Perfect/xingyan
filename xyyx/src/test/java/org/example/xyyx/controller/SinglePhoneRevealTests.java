@@ -204,16 +204,16 @@ class SinglePhoneRevealTests {
     private static Object clickSettings() throws Exception {
         Class<?> settings = Class.forName("org.example.xyyx.service.TenantSystemSettingsService$TenantSystemSettings");
         Class<?> mode = Class.forName("org.example.xyyx.service.GlobalPhoneDisplayPolicyMode");
-        return settings.getConstructor(String.class, mode, int.class, Object.class)
-                .newInstance("default", Enum.valueOf((Class<Enum>) mode, "CLICK_TO_SESSION_VISIBLE"), 20, null);
+        return settings.getConstructor(String.class, mode, int.class, int.class, Object.class)
+                .newInstance("default", Enum.valueOf((Class<Enum>) mode, "CLICK_TO_SESSION_VISIBLE"), 20, 3, null);
     }
 
     @SuppressWarnings({"unchecked", "rawtypes"})
     private static Object maskedSettings() throws Exception {
         Class<?> settings = Class.forName("org.example.xyyx.service.TenantSystemSettingsService$TenantSystemSettings");
         Class<?> mode = Class.forName("org.example.xyyx.service.GlobalPhoneDisplayPolicyMode");
-        return settings.getConstructor(String.class, mode, int.class, Object.class)
-                .newInstance("default", Enum.valueOf((Class<Enum>) mode, "MASKED_ONLY"), 20, null);
+        return settings.getConstructor(String.class, mode, int.class, int.class, Object.class)
+                .newInstance("default", Enum.valueOf((Class<Enum>) mode, "MASKED_ONLY"), 20, 3, null);
     }
 
     private static Class<?> surveyClass() throws Exception {

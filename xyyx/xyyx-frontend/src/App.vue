@@ -88,12 +88,17 @@
           </nav>
         </div>
         <div class="taskbar-right">
-          <span class="user-name">{{ user.username }}</span>
-          <span class="role-tag hide-on-mobile">{{ user.role === 'admin' ? '管理员' : '专员' }}</span>
-          <button class="btn-notice-icon" @click="toggleNoticeCenter" title="通知中心">
-            <span>通知</span>
-            <span v-if="noticeUnreadCount > 0" class="notice-dot">{{ noticeUnreadCount > 99 ? '99+' : noticeUnreadCount }}</span>
+          <button
+            class="avatar-btn"
+            type="button"
+            @click="openPersonalCenter"
+            :title="`${myAccount.displayName || user.username}（${user.role === 'admin' ? '管理员' : '专员'}）· 个人中心`"
+          >
+            <span class="avatar-circle">{{ avatarInitial }}</span>
           </button>
+          <el-badge :value="noticeUnreadCount > 99 ? '99+' : noticeUnreadCount" :hidden="noticeUnreadCount === 0" class="notice-badge">
+            <el-button class="btn-notice-icon" @click="toggleNoticeCenter" title="通知中心">通知</el-button>
+          </el-badge>
           <button class="btn-logout-icon" @click="logout" title="退出登录">退出</button>
         </div>
       </header>
@@ -113,9 +118,25 @@
         <div v-if="view === 'work'" class="view-content">
 
           <header class="page-header">
-            <h2 class="white-text">数据流转中心</h2>
+            <h2 class="white-text">工作台</h2>
+            <div class="header-search-group">
+              <div class="search-bar">
+                <el-input
+                  v-model="searchQuery.keyword"
+                  class="search-input"
+                  placeholder="搜索客户"
+                  aria-label="搜索客户"
+                  clearable
+                  @keyup.enter="doSearch"
+                />
+                <el-button type="primary" @click="doSearch">搜索</el-button>
+              </div>
+              <el-button type="success" class="btn-create-record" @click="openSurveyForm">登记</el-button>
+            </div>
             <div class="header-tools">
-              <button @click="refreshAll" class="btn-refresh">刷新数据</button>
+              <button @click="refreshAll" class="btn-refresh" title="刷新数据" aria-label="刷新数据">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"></polyline><polyline points="1 20 1 14 7 14"></polyline><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path></svg>
+              </button>
               <div class="tab-group-container">
                 <div class="tab-group">
                   <button :class="{active: !dueOnly && listStatus==='未处理'}" @click="selectListStatus('未处理')">待处理</button>
@@ -140,15 +161,6 @@
           </button>
           <div v-else class="revisit-summary revisit-summary-empty">暂无待回访</div>
 
-          <div class="search-filter-bar">
-            <input v-model="searchQuery.keyword" class="search-input text-black" aria-label="搜索客户" @keyup.enter="doSearch">
-            <button @click="doSearch" class="btn-search">查询</button>
-          </div>
-
-          <div class="create-record-row">
-            <button type="button" @click="openSurveyForm" class="btn-add-fluid btn-create-record">+ 录入新回访记录</button>
-          </div>
-
           <div class="table-container">
             <table class="modern-table">
               <thead>
@@ -163,9 +175,9 @@
               <tbody>
               <tr v-for="item in surveys" :key="item.id" @click="openModal(item)" class="clickable-row">
                 <td>
-                  <span :class="['status-badge', item.status === '已处理' ? 'done' : 'todo']">{{ item.status }}</span>
-                  <div v-if="revisitTag(item).type === 'overdue'" class="red-tag mt-1">{{ revisitTag(item).text }}</div>
-                  <div v-else-if="revisitTag(item).type === 'today'" class="amber-tag mt-1">{{ revisitTag(item).text }}</div>
+                  <el-tag :type="surveyStatusBadge(item).type" size="small">{{ surveyStatusBadge(item).text }}</el-tag>
+                  <div v-if="revisitTag(item).type === 'today'" class="amber-tag mt-1">{{ revisitTag(item).text }}</div>
+                  <div v-if="user.role === 'admin'" class="owner-nickname-line text-muted">录入：{{ item.ownerNickname || item.owner || '未知' }}</div>
                 </td>
                 <td class="bold highlight-text">{{ item.name }}</td>
                 <td>
@@ -185,7 +197,7 @@
                   </div>
                 </td>
                 <td @click.stop>
-                  <button v-if="item.status==='未处理'" @click="processTask(item.id)" class="btn-action-small">完成处理</button>
+                  <el-button v-if="item.status==='未处理'" size="small" type="primary" @click="processTask(item.id)">完成处理</el-button>
                   <span v-else class="text-muted">已归档</span>
                 </td>
               </tr>
@@ -202,7 +214,8 @@
           <div class="form-card user-form-bg">
             <h4 class="form-title"> 开通新员工</h4>
             <div class="form-grid-fluid">
-              <input v-model="userForm.username" placeholder="设置账号 (英数)" class="text-black">
+              <input v-model="userForm.username" placeholder="设置账号（登录用，仅限字母/数字/下划线/连字符）" class="text-black">
+              <input v-model="userForm.nickname" placeholder="设置昵称（可选，默认与账号相同）" class="text-black">
               <input v-model="userForm.password" type="password" placeholder="设置初始密码" class="text-black">
               <button @click="submitAddUser" class="btn-add-fluid dark">确认开通</button>
             </div>
@@ -211,27 +224,35 @@
             <table class="modern-table">
               <thead>
               <tr>
-                <th>员工账号</th>
+                <th>员工账号 / 昵称</th>
                 <th>权限角色</th>
                 <th>新密码</th>
                 <th>操作</th>
+                <th>未处理 / 已逾期</th>
               </tr>
               </thead>
               <tbody>
               <tr v-for="u in usersList" :key="u.id">
-                <td class="bold text-black">{{ u.username }}</td>
+                <td>
+                  <div class="bold text-black">{{ u.username }}</div>
+                  <div v-if="u.nickname && u.nickname !== u.username" class="staff-nickname">{{ u.nickname }}</div>
+                </td>
                 <td><span class="role-badge">{{ u.role === 'admin' ? '管理员' : '业务专员' }}</span></td>
                 <td>
                   <input
                     v-model="userPasswordDraft[u.id]"
                     class="user-password-input text-black"
                     type="password"
-                    placeholder="输入 6 位以上新密码"
+                    placeholder="6 位以上新密码"
                   >
                 </td>
                 <td class="user-actions">
                   <button @click="updateStaffPassword(u)" class="btn-inline">修改密码</button>
                   <button @click="deleteStaffUser(u)" class="btn-inline-danger">删除员工</button>
+                </td>
+                <td class="workload-cell">
+                  <span class="count-pill">未处理 {{ u.pendingCount ?? 0 }}</span>
+                  <span class="count-pill" :class="{ 'count-pill-danger': (u.overdueCount ?? 0) > 0 }">已逾期 {{ u.overdueCount ?? 0 }}</span>
                 </td>
               </tr>
               </tbody>
@@ -275,6 +296,17 @@
                 >
                 <small>范围 1 - 100。</small>
               </label>
+              <label class="policy-field">
+                <span>回访时限（天）</span>
+                <input
+                  v-model.number="systemSettingsForm.revisitDeadlineDays"
+                  class="text-black"
+                  type="number"
+                  min="1"
+                  max="30"
+                >
+                <small>未处理记录到达"下次回访日期"后，超过此天数才计入"已逾期"。范围 1 - 30，默认 3。</small>
+              </label>
             </div>
             <p class="policy-warning">
               开关 ON：员工点击任意一个可见订单的小眼睛后，本次登录期间其所有可见订单的手机号都不再隐藏。
@@ -283,6 +315,43 @@
             <footer class="modal-footer">
               <button class="btn-inline" type="button" @click="closeSystemSettings">取消</button>
               <button class="btn-action" type="button" :disabled="isSystemSettingsSaving" @click="saveSystemSettings">保存</button>
+            </footer>
+          </div>
+        </div>
+
+        <div class="modal-overlay" v-if="isPersonalCenterOpen" @click.self="closePersonalCenter">
+          <div class="modal-content personal-center-modal">
+            <header class="modal-header">
+              <h3 class="modal-title">个人中心</h3>
+              <button class="btn-close" type="button" @click="closePersonalCenter" title="关闭">关闭</button>
+            </header>
+            <div class="form-grid-fluid">
+              <label class="policy-field">
+                <span>登录账号</span>
+                <input :value="user.username" class="text-black" disabled>
+              </label>
+              <label class="policy-field">
+                <span>昵称</span>
+                <input v-model.trim="personalCenterForm.displayName" class="text-black" placeholder="设置昵称（支持中文）" maxlength="50">
+              </label>
+            </div>
+            <div class="modal-status" v-if="personalCenterMessage">{{ personalCenterMessage }}</div>
+            <footer class="modal-footer">
+              <button class="btn-action" type="button" :disabled="isPersonalCenterSaving" @click="saveNickname">保存昵称</button>
+            </footer>
+
+            <hr class="modal-divider">
+
+            <h4 class="form-title">修改密码</h4>
+            <div class="form-grid-fluid">
+              <input v-model="passwordChangeForm.currentPassword" type="password" placeholder="当前密码" class="text-black" autocomplete="current-password">
+              <input v-model="passwordChangeForm.newPassword" type="password" placeholder="新密码（至少 6 位）" class="text-black" autocomplete="new-password">
+              <input v-model="passwordChangeForm.confirmPassword" type="password" placeholder="确认新密码" class="text-black" autocomplete="new-password">
+            </div>
+            <p class="policy-warning">忘记当前密码请联系管理员，在"员工管理"里重置。</p>
+            <div class="modal-status" v-if="passwordChangeMessage">{{ passwordChangeMessage }}</div>
+            <footer class="modal-footer">
+              <button class="btn-action" type="button" :disabled="isPasswordChangeSaving" @click="submitOwnPasswordChange">修改密码</button>
             </footer>
           </div>
         </div>
@@ -315,75 +384,63 @@
         </div>
       </div>
 
-      <div class="modal-overlay notice-center-overlay" v-if="isNoticeCenterOpen" @click.self="closeNoticeCenter">
-        <div class="notice-center-panel">
-          <header class="notice-center-header">
-            <h3 class="notice-center-title">通知中心</h3>
-            <button class="btn-close" @click="closeNoticeCenter" title="关闭">关闭</button>
-          </header>
+      <el-drawer v-model="isNoticeCenterOpen" title="通知中心" size="420px">
+        <div class="notice-center-body">
+          <el-radio-group v-model="noticeStatus" class="notice-filter-tabs" @change="switchNoticeStatus">
+            <el-radio-button label="UNREAD">未读</el-radio-button>
+            <el-radio-button label="READ">已读</el-radio-button>
+            <el-radio-button label="ALL">全部</el-radio-button>
+          </el-radio-group>
 
-          <div class="notice-center-body">
-            <div class="notice-filter-tabs">
-              <button :class="{ active: noticeStatus === 'UNREAD' }" @click="switchNoticeStatus('UNREAD')">未读</button>
-              <button :class="{ active: noticeStatus === 'READ' }" @click="switchNoticeStatus('READ')">已读</button>
-              <button :class="{ active: noticeStatus === 'ALL' }" @click="switchNoticeStatus('ALL')">全部</button>
-            </div>
+          <div class="notice-batch-tools">
+            <el-checkbox :model-value="isAllCurrentNoticesSelected" @change="toggleSelectAllNotices">全选</el-checkbox>
+            <span class="notice-selected-count">已选 {{ selectedNoticeIds.length }} 条</span>
+            <el-button size="small" @click="markSelectedNoticesRead" :disabled="selectedNoticeIds.length === 0">标记已读</el-button>
+            <el-button size="small" type="danger" @click="deleteSelectedNotices" :disabled="selectedNoticeIds.length === 0">删除</el-button>
+          </div>
 
-            <div class="notice-batch-tools">
-              <label class="notice-check-all">
-                <input type="checkbox" :checked="isAllCurrentNoticesSelected" @change="toggleSelectAllNotices">
-                <span>全选</span>
-              </label>
-              <span class="notice-selected-count">已选 {{ selectedNoticeIds.length }} 条</span>
-              <button class="notice-action-btn" @click="markSelectedNoticesRead" :disabled="selectedNoticeIds.length === 0">标记已读</button>
-              <button class="notice-action-btn danger" @click="deleteSelectedNotices" :disabled="selectedNoticeIds.length === 0">删除</button>
-            </div>
-
-            <div class="notice-list" v-if="noticeList.length > 0">
-              <div class="notice-row" v-for="item in noticeList" :key="item.id">
-                <label class="notice-row-check">
-                  <input type="checkbox" :checked="selectedNoticeIds.includes(item.id)" @change="toggleNoticeSelection(item.id)">
-                </label>
-                <div class="notice-row-content">
-                  <div class="notice-row-top">
-                    <span :class="['notice-level', item.level ? item.level.toLowerCase() : 'info']">{{ item.level || 'INFO' }}</span>
-                    <strong class="notice-row-title">{{ item.title }}</strong>
-                    <span class="notice-row-time">{{ item.createdAt }}</span>
-                  </div>
-                  <p class="notice-row-text">{{ item.content }}</p>
-                  <div class="notice-row-actions">
-                    <span v-if="item.isRead" class="notice-read-flag">已读</span>
-                    <button v-else class="notice-inline-btn" @click="markSingleNoticeRead(item.id)">标记已读</button>
-                    <button class="notice-inline-btn danger" @click="deleteSingleNotice(item.id)">删除</button>
-                  </div>
+          <div class="notice-list" v-if="noticeList.length > 0">
+            <div class="notice-row" v-for="item in noticeList" :key="item.id">
+              <el-checkbox class="notice-row-check" :model-value="selectedNoticeIds.includes(item.id)" @change="toggleNoticeSelection(item.id)" />
+              <div class="notice-row-content">
+                <div class="notice-row-top">
+                  <span :class="['notice-level', item.level ? item.level.toLowerCase() : 'info']">{{ item.level || 'INFO' }}</span>
+                  <strong class="notice-row-title">{{ item.title }}</strong>
+                  <span class="notice-row-time">{{ item.createdAt }}</span>
+                </div>
+                <p class="notice-row-text">{{ item.content }}</p>
+                <div class="notice-row-actions">
+                  <span v-if="item.isRead" class="notice-read-flag">已读</span>
+                  <el-button v-else link type="primary" size="small" @click="markSingleNoticeRead(item.id)">标记已读</el-button>
+                  <el-button link type="danger" size="small" @click="deleteSingleNotice(item.id)">删除</el-button>
                 </div>
               </div>
             </div>
+          </div>
 
-            <div class="notice-empty" v-else>当前没有通知</div>
+          <div class="notice-empty" v-else>当前没有通知</div>
 
-            <div class="pager-fluid notice-pager">
-              <button :disabled="noticePage <= 1" @click="noticePage--;fetchNoticeList()">上一页</button>
-              <span class="pager-txt">第 {{ noticePage }} / {{ noticeTotalPages }} 页</span>
-              <button :disabled="noticePage >= noticeTotalPages" @click="noticePage++;fetchNoticeList()">下一页</button>
-            </div>
+          <div class="pager-fluid notice-pager">
+            <el-button size="small" :disabled="noticePage <= 1" @click="noticePage--;fetchNoticeList()">上一页</el-button>
+            <span class="pager-txt">第 {{ noticePage }} / {{ noticeTotalPages }} 页</span>
+            <el-button size="small" :disabled="noticePage >= noticeTotalPages" @click="noticePage++;fetchNoticeList()">下一页</el-button>
+          </div>
 
-            <div class="notice-create-box" v-if="user.role === 'admin'">
-              <h4 class="notice-create-title">发布通知</h4>
-              <div class="notice-create-grid">
-                <input v-model="noticeForm.title" placeholder="通知标题（必填）" class="text-black">
-                <select v-model="noticeForm.level" class="text-black">
-                  <option value="INFO">INFO</option>
-                  <option value="WARN">WARN</option>
-                  <option value="ALERT">ALERT</option>
-                </select>
-                <textarea v-model="noticeForm.content" class="text-black" placeholder="通知内容（必填）"></textarea>
-                <button class="btn-add-fluid" @click="publishNotice">发布通知</button>
-              </div>
+          <div class="notice-create-box" v-if="user.role === 'admin'">
+            <h4 class="notice-create-title">发布通知</h4>
+            <div class="notice-create-grid">
+              <el-input v-model="noticeForm.title" placeholder="通知标题（必填）" />
+              <el-select v-model="noticeForm.level">
+                <el-option label="INFO" value="INFO" />
+                <el-option label="WARN" value="WARN" />
+                <el-option label="ALERT" value="ALERT" />
+              </el-select>
+              <el-input v-model="noticeForm.content" type="textarea" placeholder="通知内容（必填）" />
+              <el-button type="primary" @click="publishNotice">发布通知</el-button>
             </div>
           </div>
         </div>
-      </div>
+      </el-drawer>
     </div>
 
     <div class="modal-overlay" v-if="selectedSurvey" @click.self="closeModal">
@@ -398,24 +455,23 @@
           <div class="modal-grid">
             <div class="m-item full-width remarks-box focus-remarks">
               <div class="remarks-header">
-                <span class="lbl block">核心备注 (可直接编辑):</span>
-                <button @click="saveRemarks" class="btn-save-remarks">💾 保存修改</button>
+                <span class="lbl block">备注：</span>
               </div>
               <textarea v-model="selectedSurvey.remarks" class="text-area-sim text-black" placeholder="先记录客户核心诉求、顾虑点、推进障碍与下一步动作..."></textarea>
             </div>
 
             <div class="m-item focus-card">
               <span class="lbl">项目:</span>
-              <span class="val focus-val">{{ selectedSurvey.project || '未填写' }}</span>
+              <input v-model="selectedSurvey.project" class="val focus-val edit-input text-black" placeholder="未填写">
             </div>
             <div class="m-item focus-card budget-card">
               <span class="lbl">预算:</span>
-              <span class="val focus-val">{{ selectedSurvey.budget || '未填写' }}</span>
+              <input v-model="selectedSurvey.budget" class="val focus-val edit-input text-black" placeholder="未填写">
             </div>
 
             <div class="m-item"><span class="lbl">称呼:</span> <span class="val highlight-text">{{ selectedSurvey.name }}</span></div>
             <div class="m-item"><span class="lbl">状态:</span>
-              <span :class="['status-badge', selectedSurvey.status === '已处理' ? 'done' : 'todo']">{{ selectedSurvey.status }}</span>
+              <el-tag :type="surveyStatusBadge(selectedSurvey).type" size="small">{{ surveyStatusBadge(selectedSurvey).text }}</el-tag>
             </div>
             <div class="m-item phone-reveal-row">
               <span class="lbl">电话:</span>
@@ -457,7 +513,7 @@
           </div>
 
           <div class="admin-panel-fluid mt-3" v-if="user.role === 'admin'">
-            <div class="admin-info">录入人: <b class="text-black">{{ selectedSurvey.owner }}</b> &nbsp;|&nbsp; {{ selectedSurvey.createTime }}</div>
+            <div class="admin-info">录入人: <b class="text-black">{{ selectedSurvey.ownerNickname || selectedSurvey.owner }}</b> &nbsp;|&nbsp; {{ selectedSurvey.createTime }}</div>
             <div class="admin-controls-fluid mt-2">
               <div class="share-group">
                 <label>可见权限:</label>
@@ -474,8 +530,8 @@
           </div>
         </div>
 
-        <footer class="modal-footer" v-if="selectedSurvey.status==='未处理'">
-          <button @click="processTask(selectedSurvey.id); closeModal()" class="btn-action w-full">标记为完成处理</button>
+        <footer class="modal-footer modal-footer-right">
+          <el-button type="primary" @click="saveSurveyDetail">保存</el-button>
         </footer>
       </div>
     </div>
@@ -496,6 +552,7 @@ import {
   sanitizeReturnTo
 } from './auth/oidc.js'
 import { beginPhoneRevealRequest, clearPhoneRevealUiState, displayPhoneValue, finishPhoneRevealRequest } from './phonePrivacy.js'
+import { stripTime, formatRevisitDate, revisitTag as revisitTagImpl, surveyStatusBadge as surveyStatusBadgeImpl } from './revisit.js'
 
 const API = '/api'
 const casdoorBaseUrl = import.meta.env.VITE_CASDOOR_ENDPOINT || import.meta.env.VITE_CASDOOR_BASE_URL || 'http://localhost:8000'
@@ -503,8 +560,6 @@ const casdoorApplicationName = import.meta.env.VITE_CASDOOR_APPLICATION_NAME || 
 const casdoorClientId = import.meta.env.VITE_CASDOOR_CLIENT_ID || 'xyyx-web'
 const casdoorRedirectUri = import.meta.env.VITE_CASDOOR_REDIRECT_URI || `${window.location.origin}/auth/callback`
 const casdoorScopes = import.meta.env.VITE_CASDOOR_SCOPES || 'openid profile email'
-const ACCESS_TOKEN_KEY = 'xyyx.casdoor.access_token'
-const REFRESH_TOKEN_KEY = 'xyyx.casdoor.refresh_token'
 const PUBLIC_PATHS = new Set(['/login', '/auth/callback'])
 const DISABLED_AUTH_PATHS = new Set(['/signup', '/register', '/forget', '/consent', '/prompt', '/account'])
 
@@ -517,17 +572,103 @@ const isPasswordVisible = ref(false)
 const view = ref('work')
 const textEncoder = new TextEncoder()
 
+// 认证改走后端下发的 HttpOnly Cookie（XYYX_AT），token 不再进入 JS。这里只对 /api 请求打开 withCredentials，
+// 同源下 Cookie 本就自动携带，显式置真是为兼容跨源部署；不再手工注入 Authorization 头。
 axios.interceptors.request.use((config) => {
-  const token = sessionStorage.getItem(ACCESS_TOKEN_KEY)
-  if (token && typeof config.url === 'string' && config.url.startsWith(API)) {
-    config.headers = config.headers || {}
-    config.headers.Authorization = `Bearer ${token}`
+  if (typeof config.url === 'string' && config.url.startsWith(API)) {
+    config.withCredentials = true
   }
   return config
 })
 
 const isMenuOpen = ref(false)
 const isSurveyFormOpen = ref(false)
+
+const myAccount = reactive({ displayName: '', avatar: '' })
+const avatarInitial = computed(() => {
+  const source = myAccount.displayName || user.username || '?'
+  return source.trim().charAt(0).toUpperCase()
+})
+const isPersonalCenterOpen = ref(false)
+const isPersonalCenterSaving = ref(false)
+const personalCenterMessage = ref('')
+const personalCenterForm = reactive({ displayName: '' })
+const isPasswordChangeSaving = ref(false)
+const passwordChangeMessage = ref('')
+const passwordChangeForm = reactive({ currentPassword: '', newPassword: '', confirmPassword: '' })
+
+const fetchMyCasdoorAccount = async () => {
+  // 前端已无 JS 可读 token，改由后端用 Cookie 里的身份服务端代取 Casdoor 昵称/头像。
+  try {
+    const res = await axios.get(`${API}/me/account`)
+    myAccount.displayName = res.data?.displayName || ''
+    myAccount.avatar = res.data?.avatar || ''
+  } catch (e) {
+    // 静默失败：个人中心面板会在打开时重新拉取，不影响登录主流程
+  }
+}
+
+const openPersonalCenter = async () => {
+  isMenuOpen.value = false
+  personalCenterMessage.value = ''
+  passwordChangeMessage.value = ''
+  passwordChangeForm.currentPassword = ''
+  passwordChangeForm.newPassword = ''
+  passwordChangeForm.confirmPassword = ''
+  isPersonalCenterOpen.value = true
+  await fetchMyCasdoorAccount()
+  personalCenterForm.displayName = myAccount.displayName || user.username
+}
+
+const closePersonalCenter = () => {
+  isPersonalCenterOpen.value = false
+}
+
+const saveNickname = async () => {
+  if (!personalCenterForm.displayName) {
+    personalCenterMessage.value = '昵称不能为空'
+    return
+  }
+  isPersonalCenterSaving.value = true
+  personalCenterMessage.value = ''
+  try {
+    const res = await axios.put(`${API}/me/profile`, { displayName: personalCenterForm.displayName })
+    personalCenterMessage.value = res.data
+    await fetchMyCasdoorAccount()
+  } catch (e) {
+    personalCenterMessage.value = getApiErrorMessage(e, '昵称修改失败')
+  } finally {
+    isPersonalCenterSaving.value = false
+  }
+}
+
+const submitOwnPasswordChange = async () => {
+  const { currentPassword, newPassword, confirmPassword } = passwordChangeForm
+  if (!currentPassword) return passwordChangeMessage.value = '请输入当前密码'
+  if (!newPassword || newPassword.length < 6) return passwordChangeMessage.value = '新密码至少 6 位'
+  if (newPassword !== confirmPassword) return passwordChangeMessage.value = '两次输入的新密码不一致'
+
+  isPasswordChangeSaving.value = true
+  passwordChangeMessage.value = ''
+  try {
+    const [encryptedCurrentPassword, encryptedNewPassword] = await Promise.all([
+      encryptPassword(currentPassword),
+      encryptPassword(newPassword)
+    ])
+    const res = await axios.put(`${API}/me/password`, {
+      currentPassword: encryptedCurrentPassword,
+      newPassword: encryptedNewPassword
+    })
+    passwordChangeMessage.value = res.data
+    passwordChangeForm.currentPassword = ''
+    passwordChangeForm.newPassword = ''
+    passwordChangeForm.confirmPassword = ''
+  } catch (e) {
+    passwordChangeMessage.value = getApiErrorMessage(e, '密码修改失败')
+  } finally {
+    isPasswordChangeSaving.value = false
+  }
+}
 
 const selectedSurvey = ref(null)
 const reminderSaveState = ref('idle')
@@ -544,7 +685,7 @@ const closeModal = () => { selectedSurvey.value = null }
 const openSurveyForm = () => { isSurveyFormOpen.value = true }
 const closeSurveyForm = () => { isSurveyFormOpen.value = false }
 
-const searchQuery = reactive({ keyword: '', city: '' })
+const searchQuery = reactive({ keyword: '' })
 
 const listStatus = ref('未处理')
 const dueOnly = ref(false)
@@ -557,9 +698,10 @@ const form = ref({ name: '', phone: '', wechat: '', city: '', socialAccount: '',
 const page = ref(1); const totalPages = ref(1); const totalCount = ref(0)
 const todayDate = new Date().toISOString().split('T')[0]
 const usersList = ref([])
-const userForm = ref({ username: '', password: '', role: 'staff' })
+const userForm = ref({ username: '', password: '', nickname: '', role: 'staff' })
 const userPasswordDraft = reactive({})
 const orderPageSize = ref(20)
+const revisitDeadlineDays = ref(3)
 const isSystemSettingsOpen = ref(false)
 const isSystemSettingsSaving = ref(false)
 const PHONE_POLICY_ON = 'CLICK_TO_SESSION_VISIBLE'
@@ -570,7 +712,8 @@ const PHONE_POLICY_DESCRIPTIONS = {
 }
 const systemSettingsForm = reactive({
   phoneDisplayPolicy: 'CLICK_TO_SESSION_VISIBLE',
-  orderPageSize: 20
+  orderPageSize: 20,
+  revisitDeadlineDays: 3
 })
 const revealedPhones = reactive(new Map())
 const nowTick = ref(Date.now())
@@ -629,7 +772,7 @@ const arrayBufferToBase64 = (buffer) => {
 
 const encryptPassword = async (plainText) => {
   if (!window.crypto?.subtle) {
-    throw new Error('当前浏览器不支持 WebCrypto，无法加密密码')
+    throw new Error('当前页面不是安全上下文（非 HTTPS 且非 localhost/127.0.0.1），浏览器禁用了密码加密所需的 WebCrypto，请改用 https:// 或 http://localhost 访问')
   }
   const keyRes = await axios.get(`${API}/security/public-key`)
   const keyBuffer = base64ToArrayBuffer(keyRes.data.publicKey)
@@ -663,6 +806,7 @@ const openSystemSettings = async () => {
     const res = await axios.get(`${API}/admin/system-settings`)
     systemSettingsForm.phoneDisplayPolicy = res.data.phoneDisplayPolicy || 'CLICK_TO_SESSION_VISIBLE'
     systemSettingsForm.orderPageSize = Number(res.data.orderPageSize || 20)
+    systemSettingsForm.revisitDeadlineDays = clampRevisitDeadlineDays(res.data.revisitDeadlineDays || 3)
     isSystemSettingsOpen.value = true
   } catch (e) {
     alert(getApiErrorMessage(e, '系统设置加载失败'))
@@ -706,6 +850,8 @@ const getApiErrorMessage = (error, fallback) => {
     if (error.response?.status) return `${fallback}（HTTP ${error.response.status}）`
     if (error.request) return `${fallback}（无法连接后端）`
   }
+  // 非网络错误（比如浏览器本身拒绝了某个 API）：把真实原因带出来，不要只显示空泛的 fallback。
+  if (error instanceof Error && error.message) return `${fallback}：${error.message}`
   return fallback
 }
 
@@ -713,16 +859,18 @@ const fetchAppSettings = async () => {
   try {
     const res = await axios.get(`${API}/app-settings`)
     orderPageSize.value = clampOrderPageSize(res.data?.orderPageSize || 20)
+    revisitDeadlineDays.value = clampRevisitDeadlineDays(res.data?.revisitDeadlineDays || 3)
   } catch (e) {
     orderPageSize.value = 20
+    revisitDeadlineDays.value = 3
   }
 }
 
 const clampOrderPageSize = (value) => Math.min(100, Math.max(1, Number(value) || 20))
+const clampRevisitDeadlineDays = (value) => Math.min(30, Math.max(1, Number(value) || 3))
 
 const clearAuthStorage = () => {
-  sessionStorage.removeItem(ACCESS_TOKEN_KEY)
-  sessionStorage.removeItem(REFRESH_TOKEN_KEY)
+  // token 现在只在后端下发的 HttpOnly Cookie 里，前端无法删除它——由 POST /api/auth/logout 让其过期。
   clearAuthTransaction()
   clearPhoneRevealState()
 }
@@ -806,6 +954,7 @@ const enterAuthenticatedApp = async (profile, showWelcome = false) => {
   await fetchAppSettings()
   await fetchPendingCount()
   await refreshNoticeData()
+  fetchMyCasdoorAccount()
   if (showWelcome) {
     alert(`登录成功！\n目前有 ${pendingCount.value} 条待处理数据。`)
   }
@@ -833,6 +982,10 @@ const handleLogin = async () => {
       scope: casdoorScopes,
       transaction
     })
+    // 密码以明文放进请求体直发 Casdoor /api/login：保护它的是 TLS 传输加密（生产必须 HTTPS/HSTS），
+    // 不是"扮猪吃虎"——security through obscurity 不是有效控制，攻击者看到明文只会更快而非更慢。
+    // Casdoor 登录没有 RSA 公钥加密；唯一可选项是组织级对称 Password Obfuscator（密钥对客户端可见，属混淆非加密），
+    // 默认 Plain。真正的纵深防御应放在：强制 HTTPS、限流/锁定、反代不记录请求体，而非本层。
     const loginRes = await axios.post(
       `${casdoorBaseUrl}/api/login?${query.toString()}`,
       {
@@ -905,10 +1058,9 @@ const completeCodeLogin = async (code, transaction, showWelcome) => {
     { headers: { 'Content-Type': 'application/x-www-form-urlencoded' } }
   )
 
-  sessionStorage.setItem(ACCESS_TOKEN_KEY, tokenRes.data.access_token)
-  if (tokenRes.data.refresh_token) {
-    sessionStorage.setItem(REFRESH_TOKEN_KEY, tokenRes.data.refresh_token)
-  }
+  // Pattern B（relay）：前端仍做 PKCE+换 token，但拿到后不落地到 JS，而是交给后端由其写入 HttpOnly Cookie。
+  // 后端会用 JWKS 校验该 token 才建立会话；refresh_token 一律不带出、不存储。
+  await axios.post(`${API}/auth/session`, { accessToken: tokenRes.data.access_token })
   clearAuthTransaction()
   replaceRoute(transaction.returnTo)
   await enterAuthenticatedApp(await fetchCurrentUser(), showWelcome)
@@ -999,10 +1151,6 @@ const toggleNoticeCenter = async () => {
     await fetchNoticeList()
     return
   }
-  isNoticeCenterOpen.value = false
-}
-
-const closeNoticeCenter = () => {
   isNoticeCenterOpen.value = false
 }
 
@@ -1173,7 +1321,7 @@ const selectListStatus = (status) => {
   doSearch()
 }
 
-const doSearch = () => { searchQuery.city = ''; page.value = 1; fetchData(); }
+const doSearch = () => { page.value = 1; fetchData(); }
 
 const refreshAll = () => { fetchData(); fetchPendingCount(); refreshNoticeData(); }
 
@@ -1239,10 +1387,15 @@ const processTask = async (id) => {
   }
 }
 
-const saveRemarks = async () => {
+const saveSurveyDetail = async () => {
   if(!selectedSurvey.value) return;
-  await axios.put(`${API}/surveys/${selectedSurvey.value.id}/remarks`, { remarks: selectedSurvey.value.remarks });
-  alert('备注信息已成功保存！');
+  await axios.put(`${API}/surveys/${selectedSurvey.value.id}/remarks`, {
+    remarks: selectedSurvey.value.remarks,
+    project: selectedSurvey.value.project,
+    budget: selectedSurvey.value.budget
+  });
+  alert('保存成功！');
+  closeModal();
   fetchData();
 }
 
@@ -1295,15 +1448,19 @@ const fetchUsers = async () => {
 const saveSystemSettings = async () => {
   if (user.role !== 'admin') return alert('仅管理员可操作')
   const nextPageSize = clampOrderPageSize(systemSettingsForm.orderPageSize)
+  const nextRevisitDeadlineDays = clampRevisitDeadlineDays(systemSettingsForm.revisitDeadlineDays)
   try {
     isSystemSettingsSaving.value = true
     const res = await axios.put(`${API}/admin/system-settings`, {
       phoneDisplayPolicy: systemSettingsForm.phoneDisplayPolicy,
-      orderPageSize: nextPageSize
+      orderPageSize: nextPageSize,
+      revisitDeadlineDays: nextRevisitDeadlineDays
     })
     systemSettingsForm.phoneDisplayPolicy = res.data.phoneDisplayPolicy || systemSettingsForm.phoneDisplayPolicy
     systemSettingsForm.orderPageSize = clampOrderPageSize(res.data.orderPageSize || nextPageSize)
+    systemSettingsForm.revisitDeadlineDays = clampRevisitDeadlineDays(res.data.revisitDeadlineDays || nextRevisitDeadlineDays)
     orderPageSize.value = systemSettingsForm.orderPageSize
+    revisitDeadlineDays.value = systemSettingsForm.revisitDeadlineDays
     alert('系统设置已保存。')
     closeSystemSettings()
     page.value = 1
@@ -1325,10 +1482,11 @@ const submitAddUser = async () => {
     const res = await axios.post(`${API}/users`, {
       username: userForm.value.username,
       password: encryptedPassword,
+      nickname: userForm.value.nickname,
       role: userForm.value.role
     });
     alert(res.data);
-    userForm.value = { username: '', password: '', role: 'staff' };
+    userForm.value = { username: '', password: '', nickname: '', role: 'staff' };
     userForm.value.password = '';
     fetchUsers();
   } catch (e) {
@@ -1375,32 +1533,13 @@ const buildRemarkPreview = (remarks) => {
   return chars.length > 15 ? `${chars.slice(0, 15).join('')}...` : text
 }
 
-const stripTime = (d) => d ? d.split(' ')[0] : ''
-
-const formatRevisitDate = (value) => {
-  const ymd = stripTime(value || '')
-  const parts = ymd.split('-')
-  if (parts.length !== 3) return ''
-  const month = Number(parts[1])
-  const day = Number(parts[2])
-  if (!month || !day) return ''
-  return `${month}月${day}日`
-}
-
-const revisitTag = (item) => {
-  if (!item || item.status !== '未处理' || !item.nextSurveyDate) return { type: null, text: '' }
-  const ymd = stripTime(item.nextSurveyDate)
-  if (!ymd) return { type: null, text: '' }
-  if (ymd === todayDate) return { type: 'today', text: '今日回访' }
-  if (ymd < todayDate) {
-    const diffMs = new Date(`${todayDate}T00:00:00`).getTime() - new Date(`${ymd}T00:00:00`).getTime()
-    const days = Math.max(1, Math.ceil(diffMs / 86400000))
-    return { type: 'overdue', text: `已逾期 ${days} 天` }
-  }
-  return { type: null, text: '' }
-}
-const logout = () => {
+const revisitTag = (item) => revisitTagImpl(item, todayDate, revisitDeadlineDays.value)
+const surveyStatusBadge = (item) => surveyStatusBadgeImpl(item, todayDate, revisitDeadlineDays.value)
+const logout = async () => {
   if(confirm('确定要安全退出系统吗？')) {
+    // 先趁 token 仍有效通知后端把它加入拒绝名单（登出即撤销），必须 await——否则下面 clearAuthStorage
+    // 会先清掉 sessionStorage，异步请求拦截器就取不到 token，后端也就无从识别要撤销哪个会话。
+    try { await axios.post(`${API}/auth/logout`) } catch (e) { /* 撤销失败不阻断登出 */ }
     void axios.post(`${casdoorBaseUrl}/api/logout`, null, { withCredentials: true }).catch(() => {})
     clearAuthStorage()
     isLoggedIn.value = false
@@ -1429,20 +1568,18 @@ onMounted(async () => {
     await handleAuthCallback()
     return
   }
-  if (sessionStorage.getItem(ACCESS_TOKEN_KEY)) {
-    try {
-      loginStatus.value = '正在恢复登录状态...'
-      await enterAuthenticatedApp(await fetchCurrentUser(), false)
-      if (window.location.pathname === '/login') {
-        replaceRoute(getLoginReturnTo())
-      }
-    } catch (e) {
-      clearAuthStorage()
-      loginStatus.value = ''
+  // 会话在后端 HttpOnly Cookie 里，前端无从直接检查——直接探测 GET /api/me：成功即已登录，401 则回登录页。
+  try {
+    loginStatus.value = '正在恢复登录状态...'
+    await enterAuthenticatedApp(await fetchCurrentUser(), false)
+    if (window.location.pathname === '/login') {
+      replaceRoute(getLoginReturnTo())
+    }
+  } catch (e) {
+    loginStatus.value = ''
+    if (!PUBLIC_PATHS.has(window.location.pathname)) {
       replaceWithLogin()
     }
-  } else if (!PUBLIC_PATHS.has(window.location.pathname)) {
-    replaceWithLogin()
   }
 })
 onUnmounted(() => {
@@ -1675,9 +1812,7 @@ onUnmounted(() => {
 .btn-search,
 .btn-add-fluid,
 .btn-save-share,
-.btn-action,
-.btn-action-small,
-.btn-save-remarks {
+.btn-action {
   border: 0;
   border-radius: 12px;
   cursor: pointer;
@@ -1850,20 +1985,41 @@ onUnmounted(() => {
   box-shadow: 0 3px 8px rgba(15, 23, 42, 0.1);
 }
 
-.user-name {
-  color: #0f172a;
-  font-weight: 700;
-  font-size: 13px;
-  white-space: nowrap;
+.avatar-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  line-height: 0;
 }
 
-.role-tag {
-  font-size: 11px;
-  color: #1d4ed8;
-  background: #eff6ff;
-  border: 1px solid #bfdbfe;
+.avatar-circle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   border-radius: 999px;
-  padding: 3px 9px;
+  background: #1d4ed8;
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.avatar-btn:hover .avatar-circle {
+  filter: brightness(1.08);
+}
+
+.modal-divider {
+  border: 0;
+  border-top: 1px solid #e2e8f0;
+  margin: 18px 0;
+}
+
+.modal-status {
+  font-size: 13px;
+  color: #1d4ed8;
+  margin: 8px 0;
 }
 
 .btn-notice-icon {
@@ -1877,23 +2033,6 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 700;
   cursor: pointer;
-}
-
-.notice-dot {
-  position: absolute;
-  top: -6px;
-  right: -6px;
-  min-width: 18px;
-  height: 18px;
-  border-radius: 999px;
-  background: #ef4444;
-  color: #fff;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 0 5px;
 }
 
 .btn-logout-icon {
@@ -2003,22 +2142,56 @@ onUnmounted(() => {
 }
 
 .btn-refresh {
-  padding: 11px 14px;
-  font-weight: 700;
-  color: #1d4ed8;
-  border: 1px solid #bfdbfe;
-  background: #eff6ff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  flex: 0 0 auto;
+  color: #64748b;
+  border: none;
+  border-radius: 50%;
+  background: #f1f5f9;
   box-shadow: none;
 }
 
 .btn-refresh:hover {
-  transform: translateY(-1px);
-  background: #bae6fd;
+  color: #1d4ed8;
+  background: #e2e8f0;
+}
+
+.btn-refresh:active svg {
+  transform: rotate(180deg);
+  transition: transform 0.3s ease;
 }
 
 .tab-group-container {
   flex: 1;
   min-width: 220px;
+}
+
+.header-search-group {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex: 1 1 420px;
+  min-width: 280px;
+  max-width: 560px;
+}
+
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 260px;
+  min-width: 200px;
+}
+
+.header-search-group .search-input {
+  flex: 1;
+  min-width: 160px;
 }
 
 .tab-group {
@@ -2046,7 +2219,6 @@ onUnmounted(() => {
   box-shadow: 0 3px 8px rgba(15, 23, 42, 0.1);
 }
 
-.search-filter-bar,
 .form-card,
 .table-container {
   border-radius: 16px;
@@ -2054,13 +2226,6 @@ onUnmounted(() => {
   background: var(--bg-card);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
   animation: rise-in 0.42s ease both;
-}
-
-.search-filter-bar {
-  padding: 10px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
 }
 
 .search-input {
@@ -2074,34 +2239,11 @@ onUnmounted(() => {
   font-size: 14px;
 }
 
-.btn-search {
-  flex: 0 0 96px;
-  padding: 11px 18px;
-  font-weight: 700;
-  border: 1px solid #1d4ed8 !important;
-  background: #1d4ed8 !important;
-  color: #ffffff !important;
-  box-shadow: 0 10px 18px rgba(29, 78, 216, 0.18) !important;
-}
-
-.create-record-row {
-  display: flex;
-  justify-content: flex-start;
-  margin-top: -2px;
-}
-
-.btn-add-fluid.btn-create-record {
+.btn-create-record {
+  flex: 0 0 auto;
   width: fit-content;
   max-width: 100%;
-  min-height: 38px;
-  padding: 8px 14px;
-  border-radius: 10px;
-  border: 1px solid #bfdbfe !important;
-  background: #eff6ff !important;
-  color: #1d4ed8 !important;
-  box-shadow: none !important;
-  font-size: 14px;
-  line-height: 1.2;
+  margin-left: auto;
 }
 
 .form-card {
@@ -2193,8 +2335,7 @@ onUnmounted(() => {
 }
 
 .user-password-input {
-  width: 100%;
-  min-width: 170px;
+  width: 160px;
   border: 1px solid #d2dce8;
   border-radius: 10px;
   padding: 8px 10px;
@@ -2350,36 +2491,6 @@ onUnmounted(() => {
   background: #f8fbff;
 }
 
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  border-radius: 999px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.status-badge.done {
-  color: #065f46;
-  background: #d1fae5;
-}
-
-.status-badge.todo {
-  color: #92400e;
-  background: #fef3c7;
-}
-
-.red-tag {
-  margin-top: 6px;
-  display: inline-block;
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #991b1b;
-  background: #fee2e2;
-}
-
 .amber-tag {
   margin-top: 6px;
   display: inline-block;
@@ -2515,53 +2626,45 @@ onUnmounted(() => {
   color: #94a3b8;
 }
 
+.owner-nickname-line {
+  margin-top: 4px;
+  font-size: 12px;
+}
+
+.workload-cell {
+  white-space: nowrap;
+}
+
+.staff-nickname {
+  margin-top: 2px;
+  font-size: 12px;
+  color: #64748b;
+}
+
+.count-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #475569;
+  background: #eef2f7;
+}
+
+.count-pill + .count-pill {
+  margin-left: 6px;
+}
+
+.count-pill-danger {
+  color: #b91c1c;
+  background: #fee2e2;
+}
+
 .empty-state {
   text-align: center;
   color: #94a3b8;
   padding: 34px !important;
-}
-
-.btn-action-small {
-  background: #dbeafe;
-  color: #1e3a8a;
-  font-weight: 700;
-  padding: 8px 12px;
-  box-shadow: none;
-}
-
-.btn-action-small:hover {
-  background: #bfdbfe;
-}
-
-.notice-center-overlay {
-  z-index: 85;
-}
-
-.notice-center-panel {
-  width: min(860px, 100%);
-  max-height: 92vh;
-  border-radius: 18px;
-  border: 1px solid #dbe4ef;
-  background: #fff;
-  box-shadow: 0 24px 56px rgba(15, 23, 42, 0.34);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
-
-.notice-center-header {
-  padding: 14px 18px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid #e2e8f0;
-  background: #f8fafc;
-}
-
-.notice-center-title {
-  margin: 0;
-  font-size: 18px;
-  color: #0f172a;
 }
 
 .notice-center-body {
@@ -2573,26 +2676,6 @@ onUnmounted(() => {
 
 .notice-filter-tabs {
   display: inline-flex;
-  border-radius: 12px;
-  background: #eff6ff;
-  padding: 4px;
-  gap: 3px;
-}
-
-.notice-filter-tabs button {
-  border: 0;
-  border-radius: 9px;
-  padding: 7px 12px;
-  font-size: 12px;
-  font-weight: 700;
-  color: #1e3a8a;
-  background: transparent;
-  cursor: pointer;
-}
-
-.notice-filter-tabs button.active {
-  background: #fff;
-  box-shadow: 0 3px 8px rgba(15, 23, 42, 0.12);
 }
 
 .notice-batch-tools {
@@ -2606,38 +2689,9 @@ onUnmounted(() => {
   background: #f8fafc;
 }
 
-.notice-check-all {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: #334155;
-}
-
 .notice-selected-count {
   color: #475569;
   font-size: 13px;
-}
-
-.notice-action-btn {
-  border: 0;
-  border-radius: 10px;
-  background: #dbeafe;
-  color: #1e3a8a;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 7px 11px;
-  cursor: pointer;
-}
-
-.notice-action-btn.danger {
-  background: #fee2e2;
-  color: #991b1b;
-}
-
-.notice-action-btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .notice-list {
@@ -2715,22 +2769,6 @@ onUnmounted(() => {
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.notice-inline-btn {
-  border: 0;
-  border-radius: 8px;
-  background: #dbeafe;
-  color: #1e3a8a;
-  font-size: 12px;
-  font-weight: 700;
-  padding: 5px 9px;
-  cursor: pointer;
-}
-
-.notice-inline-btn.danger {
-  background: #fee2e2;
-  color: #991b1b;
 }
 
 .notice-read-flag {
@@ -2922,17 +2960,13 @@ onUnmounted(() => {
   margin-bottom: 8px;
 }
 
-.btn-save-remarks {
-  padding: 7px 10px;
-  font-size: 12px;
-  font-weight: 700;
-  background: #dbeafe;
-  color: #1e3a8a;
-  box-shadow: none;
-}
-
-.btn-save-remarks:hover {
-  background: #bfdbfe;
+.edit-input {
+  border: 1px solid #bfdbfe;
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: #fff;
+  flex: 1;
+  min-width: 0;
 }
 
 .text-area-sim {
@@ -3061,6 +3095,11 @@ onUnmounted(() => {
   background: #fff;
 }
 
+.modal-footer-right {
+  display: flex;
+  justify-content: flex-end;
+}
+
 .btn-action {
   width: 100%;
   padding: 12px 14px;
@@ -3138,9 +3177,22 @@ onUnmounted(() => {
   }
 
   .page-header {
-    flex-direction: row;
+    display: grid;
+    grid-template-columns: auto minmax(320px, 560px) auto;
     align-items: center;
-    justify-content: space-between;
+    column-gap: 12px;
+  }
+
+  .page-header .white-text {
+    justify-self: start;
+  }
+
+  .page-header .header-search-group {
+    justify-self: stretch;
+  }
+
+  .page-header .header-tools {
+    justify-self: end;
   }
 }
 
@@ -3159,10 +3211,6 @@ onUnmounted(() => {
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 15px;
-  }
-
-  .user-name {
-    display: none;
   }
 
   .top-taskbar {

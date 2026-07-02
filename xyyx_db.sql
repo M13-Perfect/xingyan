@@ -37,12 +37,23 @@ DROP TABLE IF EXISTS `user`;
 -- -------------------------------------
 CREATE TABLE `user` (
   `id` int NOT NULL AUTO_INCREMENT,
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'default',
   `username` varchar(50) NOT NULL,
   `password` varchar(255) NOT NULL,
-  `role` varchar(20) NOT NULL COMMENT 'admin/staff',
+  `role` varchar(20) NOT NULL COMMENT 'admin/staff; deprecated, prefer user_role',
+  `status` varchar(20) NOT NULL DEFAULT 'active',
+  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `is_deleted` tinyint(1) NOT NULL DEFAULT 0,
+  `deleted_at` datetime DEFAULT NULL,
+  `created_by_user_id` int DEFAULT NULL,
   PRIMARY KEY (`id`),
-  UNIQUE KEY `uk_user_username` (`username`),
-  CONSTRAINT `ck_user_role` CHECK (`role` IN ('admin', 'staff'))
+  UNIQUE KEY `uk_user_tenant_username` (`tenant_id`, `username`),
+  -- fk_notice_state_user 引用 user(username)，外键要求该列是某个索引的首列；
+  -- uk_user_tenant_username 里 username 是第二列，不满足，故保留此普通索引
+  KEY `idx_user_username` (`username`),
+  CONSTRAINT `ck_user_role` CHECK (`role` IN ('admin', 'staff')),
+  CONSTRAINT `ck_user_status` CHECK (`status` IN ('active', 'disabled'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- -------------------------------------
@@ -172,13 +183,15 @@ CREATE TABLE `notice_user_state` (
 CREATE TABLE `user_role` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `user_id` int NOT NULL,
+  `tenant_id` varchar(64) NOT NULL DEFAULT 'default',
   `role_id` bigint NOT NULL,
   `assigned_by_user_id` int DEFAULT NULL,
   `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `revoked_at` datetime DEFAULT NULL,
   PRIMARY KEY (`id`),
   KEY `idx_user_role_user` (`user_id`, `revoked_at`),
-  KEY `idx_user_role_role` (`role_id`, `revoked_at`)
+  KEY `idx_user_role_role` (`role_id`, `revoked_at`),
+  KEY `idx_user_role_tenant` (`tenant_id`, `revoked_at`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
 
 -- -------------------------------------

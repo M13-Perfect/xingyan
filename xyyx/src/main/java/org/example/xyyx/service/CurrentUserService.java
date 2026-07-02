@@ -122,6 +122,29 @@ public class CurrentUserService {
         ));
     }
 
+    /**
+     * 撤销名单专用的「单个 token」标识——必须按 token 粒度，绝不能用可能跨会话稳定的 sid/sessionId：
+     * 否则登出把该 sid 加入名单后，同一 SSO 会话随后重新签发、携带同一 sid 的新 token 也会被误拒，
+     * 造成"登出后一段时间内无法重新登录"。优先用每 token 唯一的 jti，退回 token 指纹。
+     * 注意与 {@link #loginSessionId} 区分：后者用于手机号会话可见（希望跨 token 稳定），这里恰恰相反。
+     */
+    public Optional<String> tokenRevocationKey(Jwt jwt) {
+        if (jwt == null) {
+            return Optional.empty();
+        }
+        String jti = jwt.getId();
+        if (jti != null && !jti.isBlank()) {
+            return Optional.of("jti:" + jti);
+        }
+        String tokenValue = jwt.getTokenValue();
+        if (tokenValue == null || tokenValue.isBlank()) {
+            return Optional.empty();
+        }
+        return Optional.of("token-fingerprint:" + sha256(
+                tokenValue + "|" + jwt.getIssuedAt() + "|" + jwt.getExpiresAt()
+        ));
+    }
+
     private String claim(Jwt jwt, String name) {
         Map<String, Object> claims = jwt.getClaims();
         Object value = claims.get(name);

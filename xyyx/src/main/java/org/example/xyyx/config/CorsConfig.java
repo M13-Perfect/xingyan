@@ -1,5 +1,6 @@
 package org.example.xyyx.config;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
@@ -7,20 +8,20 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 @Configuration
 public class CorsConfig implements WebMvcConfigurer {
 
+    // 显式白名单，逗号分隔。默认只放本地开发源；生产用 XYYX_CORS_ALLOWED_ORIGINS 覆盖为真实前端域名。
+    // 逗号分隔。生产/开发前端与 /api 实际是同源（反向代理 / Vite 代理），CORS 只是"直连 :8080"时的安全网。
+    @Value("${xyyx.cors.allowed-origins:http://localhost:5173,http://127.0.0.1:5173}")
+    private String[] allowedOrigins;
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        // 针对所有接口路径生效
-        registry.addMapping("/**")
-                // 允许的前端源（在本地开发时，Vue 3 通常运行在 5173 或 8080 端口）
-                // 使用 allowedOriginPatterns 替代 allowedOrigins 兼容性更好，特别是配合 allowCredentials 时
-                .allowedOriginPatterns("*")
-                // 允许的 HTTP 请求方法
+        // 绝不能用 allowedOriginPatterns("*") + allowCredentials(true)：那会把任意来源都当可信并允许携带凭证，
+        // 一旦 token 改走 Cookie 即成高危 CSRF/数据窃取面。这里收敛为有限白名单。
+        registry.addMapping("/api/**")
+                .allowedOrigins(allowedOrigins)
                 .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
-                // 允许携带的请求头
                 .allowedHeaders("*")
-                // 是否允许前端携带凭证（如 Cookie 或 Authorization 里的 token）
                 .allowCredentials(true)
-                // 预检请求的缓存时间（秒），避免每次真实请求前都发送 OPTIONS 请求
                 .maxAge(3600);
     }
 }

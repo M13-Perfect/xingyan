@@ -131,6 +131,15 @@ public interface SurveyMapper {
             "</script>")
     int countRevisitOverdueStaff(@Param("username") String username, @Param("tenantId") String tenantId, @Param("end") LocalDateTime end);
 
+    @Select("SELECT COUNT(*) FROM survey WHERE tenant_id = #{tenantId} AND status = '未处理' AND owner = #{username}")
+    int countPendingByOwner(@Param("tenantId") String tenantId, @Param("username") String username);
+
+    @Select("<script>" +
+            "SELECT COUNT(*) FROM survey WHERE tenant_id = #{tenantId} AND status = '未处理' " +
+            "AND owner = #{username} AND next_survey_date &lt; #{end}" +
+            "</script>")
+    int countOverdueByOwner(@Param("tenantId") String tenantId, @Param("username") String username, @Param("end") LocalDateTime end);
+
     @Select(PUBLIC_COLUMNS + " FROM survey WHERE tenant_id = #{tenantId} AND phone_hash = #{phoneHash} LIMIT 1")
     List<Survey> selectAdminByPhoneHash(@Param("tenantId") String tenantId, @Param("phoneHash") byte[] phoneHash);
 
@@ -172,11 +181,16 @@ public interface SurveyMapper {
             "#{wechat}, #{socialAccount}, #{city}, #{project}, #{budget}, #{remarks}, #{owner}, 'PRIVATE', '未处理', #{nextSurveyDate})")
     int insert(Survey survey);
 
-    @Update("UPDATE survey SET status = '已处理' WHERE id = #{id}")
-    int updateStatus(Long id);
+    // 处理状态：admin 仅限本租户；staff 还需命中可见范围(owner/public/shared)，未命中返回 0 → 控制器判 403。
+    @Update("UPDATE survey SET status = '已处理' WHERE tenant_id = #{tenantId} AND id = #{id}")
+    int updateAdminStatus(@Param("tenantId") String tenantId, @Param("id") Long id);
 
-    @Delete("DELETE FROM survey WHERE id = #{id}")
-    int deleteById(Long id);
+    @Update("UPDATE survey SET status = '已处理' WHERE tenant_id = #{tenantId} AND id = #{id} AND " + STAFF_SCOPE)
+    int updateStaffStatus(@Param("username") String username, @Param("tenantId") String tenantId, @Param("id") Long id);
+
+    // 物理删除是管理员专属动作，加租户作用域防跨租户误删；返回行数供控制器判定。
+    @Delete("DELETE FROM survey WHERE tenant_id = #{tenantId} AND id = #{id}")
+    int deleteByIdTenant(@Param("tenantId") String tenantId, @Param("id") Long id);
 
     @Update("UPDATE survey SET next_survey_date = #{date} WHERE tenant_id = #{tenantId} AND id = #{id}")
     int updateAdminNextDate(@Param("tenantId") String tenantId, @Param("id") Long id, @Param("date") LocalDateTime date);
@@ -184,11 +198,15 @@ public interface SurveyMapper {
     @Update("UPDATE survey SET next_survey_date = #{date} WHERE tenant_id = #{tenantId} AND id = #{id} AND " + STAFF_SCOPE)
     int updateStaffNextDate(@Param("username") String username, @Param("tenantId") String tenantId, @Param("id") Long id, @Param("date") LocalDateTime date);
 
-    @Update("UPDATE survey SET visibility = #{visibility}, shared_users = #{sharedUsers} WHERE id = #{id}")
-    void updateVisibility(@Param("id") Long id, @Param("visibility") String visibility, @Param("sharedUsers") String sharedUsers);
+    // 可见性/共享名单是管理员专属动作，加租户作用域并返回行数供控制器判定。
+    @Update("UPDATE survey SET visibility = #{visibility}, shared_users = #{sharedUsers} WHERE tenant_id = #{tenantId} AND id = #{id}")
+    int updateVisibilityTenant(@Param("tenantId") String tenantId, @Param("id") Long id, @Param("visibility") String visibility, @Param("sharedUsers") String sharedUsers);
 
-    @Update("UPDATE survey SET remarks = #{remarks} WHERE id = #{id}")
-    void updateRemarks(@Param("id") Long id, @Param("remarks") String remarks);
+    @Update("UPDATE survey SET remarks = #{remarks}, project = #{project}, budget = #{budget} WHERE tenant_id = #{tenantId} AND id = #{id}")
+    int updateAdminDetail(@Param("tenantId") String tenantId, @Param("id") Long id, @Param("remarks") String remarks, @Param("project") String project, @Param("budget") String budget);
+
+    @Update("UPDATE survey SET remarks = #{remarks}, project = #{project}, budget = #{budget} WHERE tenant_id = #{tenantId} AND id = #{id} AND " + STAFF_SCOPE)
+    int updateStaffDetail(@Param("username") String username, @Param("tenantId") String tenantId, @Param("id") Long id, @Param("remarks") String remarks, @Param("project") String project, @Param("budget") String budget);
 
     @Select("SELECT id, tenant_id AS tenantId, customer_uuid AS customerUuid, phone " +
             "FROM survey WHERE tenant_id = #{tenantId} AND id > #{afterId} " +
