@@ -3,6 +3,8 @@ package org.example.xyyx.config;
 import jakarta.servlet.http.HttpServletRequest;
 import org.example.xyyx.service.ApiException;
 import org.example.xyyx.service.PhonePrivacyException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -13,6 +15,8 @@ import java.util.Map;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
 
     @ExceptionHandler(ApiException.class)
     public ResponseEntity<Map<String, Object>> handleApi(ApiException e, HttpServletRequest request) {
@@ -34,6 +38,8 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<Map<String, Object>> handleAny(Exception e, HttpServletRequest request) {
+        // 500 必须留痕：带 requestId 记完整堆栈，否则线上只有一个无内容的 INTERNAL_SERVER_ERROR 无从排查。
+        log.error("INTERNAL_SERVER_ERROR requestId={} uri={}", requestId(request), request.getRequestURI(), e);
         return error(HttpStatus.INTERNAL_SERVER_ERROR, "INTERNAL_SERVER_ERROR", message("INTERNAL_SERVER_ERROR"), request);
     }
 

@@ -578,9 +578,10 @@ public class SurveyController {
         String remarks = payload.get("remarks");
         String project = payload.get("project");
         String budget = payload.get("budget");
+        String socialAccount = payload.get("socialAccount");
         int updated = currentUser.isAdmin()
-                ? surveyMapper.updateAdminDetail(DEFAULT_TENANT_ID, id, remarks, project, budget)
-                : surveyMapper.updateStaffDetail(currentUser.username(), DEFAULT_TENANT_ID, id, remarks, project, budget);
+                ? surveyMapper.updateAdminDetail(DEFAULT_TENANT_ID, id, remarks, project, budget, socialAccount)
+                : surveyMapper.updateStaffDetail(currentUser.username(), DEFAULT_TENANT_ID, id, remarks, project, budget, socialAccount);
         if (updated == 0) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "SURVEY_ACCESS_DENIED");
         }

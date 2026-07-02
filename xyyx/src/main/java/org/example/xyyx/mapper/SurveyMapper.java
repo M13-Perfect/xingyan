@@ -202,11 +202,11 @@ public interface SurveyMapper {
     @Update("UPDATE survey SET visibility = #{visibility}, shared_users = #{sharedUsers} WHERE tenant_id = #{tenantId} AND id = #{id}")
     int updateVisibilityTenant(@Param("tenantId") String tenantId, @Param("id") Long id, @Param("visibility") String visibility, @Param("sharedUsers") String sharedUsers);
 
-    @Update("UPDATE survey SET remarks = #{remarks}, project = #{project}, budget = #{budget} WHERE tenant_id = #{tenantId} AND id = #{id}")
-    int updateAdminDetail(@Param("tenantId") String tenantId, @Param("id") Long id, @Param("remarks") String remarks, @Param("project") String project, @Param("budget") String budget);
+    @Update("UPDATE survey SET remarks = #{remarks}, project = #{project}, budget = #{budget}, social_account = #{socialAccount} WHERE tenant_id = #{tenantId} AND id = #{id}")
+    int updateAdminDetail(@Param("tenantId") String tenantId, @Param("id") Long id, @Param("remarks") String remarks, @Param("project") String project, @Param("budget") String budget, @Param("socialAccount") String socialAccount);
 
-    @Update("UPDATE survey SET remarks = #{remarks}, project = #{project}, budget = #{budget} WHERE tenant_id = #{tenantId} AND id = #{id} AND " + STAFF_SCOPE)
-    int updateStaffDetail(@Param("username") String username, @Param("tenantId") String tenantId, @Param("id") Long id, @Param("remarks") String remarks, @Param("project") String project, @Param("budget") String budget);
+    @Update("UPDATE survey SET remarks = #{remarks}, project = #{project}, budget = #{budget}, social_account = #{socialAccount} WHERE tenant_id = #{tenantId} AND id = #{id} AND " + STAFF_SCOPE)
+    int updateStaffDetail(@Param("username") String username, @Param("tenantId") String tenantId, @Param("id") Long id, @Param("remarks") String remarks, @Param("project") String project, @Param("budget") String budget, @Param("socialAccount") String socialAccount);
 
     @Select("SELECT id, tenant_id AS tenantId, customer_uuid AS customerUuid, phone " +
             "FROM survey WHERE tenant_id = #{tenantId} AND id > #{afterId} " +

@@ -266,9 +266,6 @@
               <h3 class="modal-title">系统设置</h3>
               <button class="btn-close" type="button" @click="closeSystemSettings" title="关闭">关闭</button>
             </header>
-            <div class="policy-warning">
-              手机号策略只影响员工查看自己有权限订单时，手机号如何展示；不会让员工看到未分配或不可见订单，也不会授予完整手机号导出权限。
-            </div>
             <div class="form-grid-fluid">
               <div class="policy-field policy-toggle-field">
                 <span>手机号隐私设置</span>
@@ -283,7 +280,6 @@
                   <span class="privacy-toggle-knob"></span>
                   <span class="privacy-toggle-text">{{ isPhonePrivacyOn ? 'ON' : 'OFF' }}</span>
                 </button>
-                <small>{{ currentPhonePolicyDescription }}</small>
               </div>
               <label class="policy-field">
                 <span>单页显示订单数量</span>
@@ -294,7 +290,6 @@
                   min="1"
                   max="100"
                 >
-                <small>范围 1 - 100。</small>
               </label>
               <label class="policy-field">
                 <span>回访时限（天）</span>
@@ -305,13 +300,8 @@
                   min="1"
                   max="30"
                 >
-                <small>未处理记录到达"下次回访日期"后，超过此天数才计入"已逾期"。范围 1 - 30，默认 3。</small>
               </label>
             </div>
-            <p class="policy-warning">
-              开关 ON：员工点击任意一个可见订单的小眼睛后，本次登录期间其所有可见订单的手机号都不再隐藏。
-              开关 OFF：员工点击小眼睛只显示该一条订单的完整手机号，且仅 5 分钟（300 秒）后自动重新打码。
-            </p>
             <footer class="modal-footer">
               <button class="btn-inline" type="button" @click="closeSystemSettings">取消</button>
               <button class="btn-action" type="button" :disabled="isSystemSettingsSaving" @click="saveSystemSettings">保存</button>
@@ -493,7 +483,7 @@
             </div>
             <div class="m-item"><span class="lbl">微信:</span> <span class="val text-black">{{ selectedSurvey.wechat || '无' }}</span></div>
             <div class="m-item"><span class="lbl">城市:</span> <span class="val text-black">{{ selectedSurvey.city || '未填写' }}</span></div>
-            <div class="m-item"><span class="lbl">社交账号:</span> <span class="val text-black">{{ selectedSurvey.socialAccount || '未填写' }}</span></div>
+            <div class="m-item"><span class="lbl">社交账号:</span> <input v-model="selectedSurvey.socialAccount" class="val edit-input text-black" placeholder="未填写"></div>
 
             <div class="m-item full-width reminder-row-modal">
               <div class="reminder-copy">
@@ -706,10 +696,6 @@ const isSystemSettingsOpen = ref(false)
 const isSystemSettingsSaving = ref(false)
 const PHONE_POLICY_ON = 'CLICK_TO_SESSION_VISIBLE'
 const PHONE_POLICY_OFF = 'SINGLE_ORDER_TIMED_REVEAL'
-const PHONE_POLICY_DESCRIPTIONS = {
-  [PHONE_POLICY_ON]: '开关 ON：员工任意点击一个可见订单的小眼睛后，本次登录期间所有可见订单手机号不再隐藏。',
-  [PHONE_POLICY_OFF]: '开关 OFF：员工点击小眼睛只显示该一条订单的完整手机号，限时 5 分钟（300 秒）后自动重新打码。'
-}
 const systemSettingsForm = reactive({
   phoneDisplayPolicy: 'CLICK_TO_SESSION_VISIBLE',
   orderPageSize: 20,
@@ -724,9 +710,6 @@ const phoneRevealRequestState = {
 }
 const isSelectedPhoneRevealBusy = computed(() => (
   selectedSurvey.value ? phoneRevealRequestState.inFlightIds.has(selectedSurvey.value.id) : false
-))
-const currentPhonePolicyDescription = computed(() => (
-  PHONE_POLICY_DESCRIPTIONS[systemSettingsForm.phoneDisplayPolicy] || ''
 ))
 const isPhonePrivacyOn = computed({
   get: () => systemSettingsForm.phoneDisplayPolicy !== PHONE_POLICY_OFF,
@@ -1392,7 +1375,8 @@ const saveSurveyDetail = async () => {
   await axios.put(`${API}/surveys/${selectedSurvey.value.id}/remarks`, {
     remarks: selectedSurvey.value.remarks,
     project: selectedSurvey.value.project,
-    budget: selectedSurvey.value.budget
+    budget: selectedSurvey.value.budget,
+    socialAccount: selectedSurvey.value.socialAccount
   });
   alert('保存成功！');
   closeModal();
