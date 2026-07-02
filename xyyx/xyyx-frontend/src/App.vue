@@ -814,9 +814,9 @@ const getRequestErrorMessage = (error, fallback = '服务器网络异常，请�
   if (axios.isAxiosError(error)) {
     if (error.response) {
       const status = error.response.status
-      if (status >= 500) return `登录失败：后端服务异常（HTTP ${status}）`
-      if (status === 401 || status === 403) return '登录失败：Casdoor Token 未通过业务系统校验'
-      return `登录失败：请求异常（HTTP ${status}）`
+      if (status >= 500) return '登录失败：服务器暂时异常，请稍后重试'
+      if (status === 401 || status === 403) return '登录失败：账号校验未通过，请重新登录或联系管理员'
+      return '登录失败：请求异常，请稍后重试'
     }
     if (error.request) return '登录失败：无法连接认证服务或业务后端，请检查 HTTPS 证书、CORS 与服务状态'
   }
@@ -826,16 +826,16 @@ const getRequestErrorMessage = (error, fallback = '服务器网络异常，请�
 const getApiErrorMessage = (error, fallback) => {
   if (axios.isAxiosError(error)) {
     const data = error.response?.data
-    if (typeof data === 'string') return data
-    if (data && typeof data === 'object' && (data.message || data.code || data.requestId)) {
-      const message = data.message || fallback
-      const code = data.code || `HTTP ${error.response?.status || ''}`.trim()
-      return data.requestId
-        ? `${fallback}：${message}（${code}, requestId=${data.requestId}）`
-        : `${fallback}：${message}（${code}）`
+    if (typeof data === 'string' && data.trim()) return data
+    if (data && typeof data === 'object') {
+      // code/requestId 是内部排查信息，只记控制台，绝不进用户弹窗
+      if (data.code || data.requestId) console.error('[API]', data.code, data.requestId, data.message)
+      // 后端给了人话（message 与 code 不同）就单行直出；否则退回业务 fallback
+      if (data.message && data.message !== data.code) return data.message
+      return fallback
     }
-    if (error.response?.status) return `${fallback}（HTTP ${error.response.status}）`
-    if (error.request) return `${fallback}（无法连接后端）`
+    if (error.response?.status) return fallback
+    if (error.request) return `${fallback}（无法连接服务器）`
   }
   // 非网络错误（比如浏览器本身拒绝了某个 API）：把真实原因带出来，不要只显示空泛的 fallback。
   if (error instanceof Error && error.message) return `${fallback}：${error.message}`

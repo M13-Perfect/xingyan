@@ -74,13 +74,14 @@ test('admin system settings modal replaces employee phone policy controls', () =
   assert.doesNotMatch(app, /单页完整显示上限/)
 })
 
-test('single reveal displays backend json error message code and request id', () => {
+test('api errors show backend message as a single line and keep code/requestId out of dialogs', () => {
   const app = readFileSync(new URL('./App.vue', import.meta.url), 'utf8')
 
-  assert.match(app, /data\.message/)
-  assert.match(app, /data\.code/)
-  assert.match(app, /data\.requestId/)
-  assert.match(app, /requestId=\$\{data\.requestId\}/)
+  // 后端人话 message 单行直出
+  assert.match(app, /if \(data\.message && data\.message !== data\.code\) return data\.message/)
+  // code/requestId 是内部排查信息：只进 console，不进用户弹窗
+  assert.match(app, /console\.error\('\[API\]', data\.code, data\.requestId, data\.message\)/)
+  assert.doesNotMatch(app, /requestId=\$\{/)
   assert.match(app, /查看完整手机号失败/)
 })
 
