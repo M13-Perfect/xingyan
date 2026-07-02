@@ -1,0 +1,6 @@
+# 部署机本地生成/运行时文件，绝不提交
+.env
+casdoor-conf/casdoor.db
+casdoor-conf/casdoor.db-*
+casdoor-conf/init_data.json
+casdoor-conf/logs/

@@ -43,9 +43,9 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("/api")
-@CrossOrigin
 public class SurveyController {
     private static final String DEFAULT_TENANT_ID = "default";
+    private static final java.util.Set<String> ALLOWED_VISIBILITY = java.util.Set.of("PRIVATE", "PUBLIC", "CUSTOM");
     private static final int PHONE_GCM_IV_BYTES = 12;
     private static final int PHONE_GCM_TAG_BYTES = 16;
     private static final Logger log = LoggerFactory.getLogger(SurveyController.class);
@@ -81,61 +81,30 @@ public class SurveyController {
         return result;
     }
 
-    @PostMapping("/login")
-    public Map<String, Object> login(@RequestBody Map<String, String> loginData) {
-        Map<String, Object> result = new HashMap<>();
-        String username = loginData.get("username");
-        String encryptedPassword = loginData.get("password");
-        if (username == null || username.isBlank() || encryptedPassword == null || encryptedPassword.isBlank()) {
-            result.put("success", false);
-            result.put("message", "账号或密码不能为空");
-            return result;
-        }
-
-        String plainPassword;
-        try {
-            plainPassword = cryptoService.decryptPassword(encryptedPassword);
-        } catch (IllegalArgumentException e) {
-            result.put("success", false);
-            result.put("message", "密码解密失败");
-            return result;
-        }
-
-        List<Map<String, Object>> users = jdbcTemplate.queryForList(
-                "SELECT password, role FROM user WHERE username = ?",
-                username
-        );
-        if (users.isEmpty()) {
-            result.put("success", false);
-            result.put("message", "账号或密码错误");
-            return result;
-        }
-
-        Map<String, Object> dbUser = users.get(0);
-        String passwordHash = asString(dbUser.get("password"));
-        if (passwordHash == null || !passwordEncoder.matches(plainPassword, passwordHash)) {
-            result.put("success", false);
-            result.put("message", "账号或密码错误");
-            return result;
-        }
-
-        result.put("success", true);
-        result.put("role", asString(dbUser.get("role")));
-        result.put("username", username);
-        return result;
-    }
-
     @GetMapping("/users")
     public List<Map<String, Object>> getUsers(@AuthenticationPrincipal Jwt jwt) {
         currentUserService.requireAdmin(jwt);
-        return new ArrayList<>(jdbcTemplate.queryForList("SELECT id, username, role FROM user WHERE role != 'admin'"));
+        List<Map<String, Object>> users = new ArrayList<>(jdbcTemplate.queryForList("SELECT id, username, role FROM user WHERE role != 'admin'"));
+        int revisitDeadlineDays = tenantSystemSettingsService.getEffectiveSettings(DEFAULT_TENANT_ID).revisitDeadlineDays();
+        LocalDateTime overdueCutoff = LocalDate.now().atStartOfDay().minusDays(revisitDeadlineDays);
+        // 昵称只存在 Casdoor（displayName），本地 user 表没有该字段；批量查询尽力而为，失败退回账号名。
+        Map<String, String> nicknames = casdoorAdminService.listDisplayNames();
+        for (Map<String, Object> u : users) {
+            String username = asString(u.get("username"));
+            u.put("nickname", nicknames.getOrDefault(username, username));
+            int overdue = surveyMapper.countOverdueByOwner(DEFAULT_TENANT_ID, username, overdueCutoff);
+            int total = surveyMapper.countPendingByOwner(DEFAULT_TENANT_ID, username);
+            u.put("pendingCount", total - overdue);
+            u.put("overdueCount", overdue);
+        }
+        return users;
     }
 
     @GetMapping("/app-settings")
     public Map<String, Object> getAppSettings(@AuthenticationPrincipal Jwt jwt) {
         currentUserService.requireUser(jwt);
         TenantSystemSettings settings = tenantSystemSettingsService.getEffectiveSettings(DEFAULT_TENANT_ID);
-        return Map.of("orderPageSize", settings.orderPageSize());
+        return Map.of("orderPageSize", settings.orderPageSize(), "revisitDeadlineDays", settings.revisitDeadlineDays());
     }
 
     @GetMapping("/admin/system-settings")
@@ -160,8 +129,10 @@ public class SurveyController {
         String username = payload.get("username");
         String encryptedPassword = payload.get("password");
         String role = payload.getOrDefault("role", "staff");
+        String nickname = payload.get("nickname") == null ? null : payload.get("nickname").trim();
         if (username == null || username.isBlank()) return "账号不能为空";
         if (encryptedPassword == null || encryptedPassword.isBlank()) return "初始密码不能为空";
+        if (nickname != null && nickname.length() > 50) return "昵称最长 50 字";
         if ("admin".equalsIgnoreCase(role)) return "禁止创建管理员账号";
 
         if (!"staff".equalsIgnoreCase(role)) return "仅允许创建业务专员";
@@ -193,7 +164,8 @@ public class SurveyController {
         }
         // 本地 user + user_role 均已插入后再同步 Casdoor：失败会抛异常触发本地事务回滚，保持一致。
         // 已知可接受窗口：Casdoor 创建成功但随后本地提交失败时，可能产生 Casdoor 孤儿用户。
-        casdoorAdminService.createUser(username, plainPassword);
+        String displayName = (nickname == null || nickname.isEmpty()) ? username : nickname;
+        casdoorAdminService.createUser(username, plainPassword, displayName);
         return "员工添加成功";
     }
 
@@ -219,6 +191,7 @@ public class SurveyController {
     }
 
     @PutMapping("/users/{id}/password")
+    @Transactional
     public String updateUserPassword(
             @AuthenticationPrincipal Jwt jwt,
             @PathVariable Long id,
@@ -227,9 +200,10 @@ public class SurveyController {
         String encryptedPassword = payload.get("password");
         if (encryptedPassword == null || encryptedPassword.isBlank()) return "新密码不能为空";
 
-        List<Map<String, Object>> targetUsers = jdbcTemplate.queryForList("SELECT role FROM user WHERE id = ?", id);
+        List<Map<String, Object>> targetUsers = jdbcTemplate.queryForList("SELECT username, role FROM user WHERE id = ?", id);
         if (targetUsers.isEmpty()) return "员工不存在";
         if ("admin".equals(asString(targetUsers.get(0).get("role")))) return "禁止修改管理员密码";
+        String username = asString(targetUsers.get(0).get("username"));
 
         String plainPassword;
         try {
@@ -241,7 +215,50 @@ public class SurveyController {
 
         String passwordHash = passwordEncoder.encode(plainPassword);
         jdbcTemplate.update("UPDATE user SET password = ? WHERE id = ?", passwordHash, id);
+        // 本地改完再同步 Casdoor：Casdoor 才是登录真正用的密码库，失败要回滚本地，避免两边不一致。
+        casdoorAdminService.updateUserPassword(username, plainPassword);
         return "员工密码修改成功";
+    }
+
+    @PutMapping("/me/password")
+    @Transactional
+    public String updateOwnPassword(@AuthenticationPrincipal Jwt jwt, @RequestBody Map<String, String> payload) {
+        CurrentUser currentUser = currentUserService.requireUser(jwt);
+        String encryptedCurrentPassword = payload.get("currentPassword");
+        String encryptedNewPassword = payload.get("newPassword");
+        if (encryptedCurrentPassword == null || encryptedCurrentPassword.isBlank()) return "当前密码不能为空";
+        if (encryptedNewPassword == null || encryptedNewPassword.isBlank()) return "新密码不能为空";
+
+        String currentPlainPassword;
+        String newPlainPassword;
+        try {
+            currentPlainPassword = cryptoService.decryptPassword(encryptedCurrentPassword);
+            newPlainPassword = cryptoService.decryptPassword(encryptedNewPassword);
+        } catch (IllegalArgumentException e) {
+            return "密码解密失败";
+        }
+        if (newPlainPassword.length() < 6) return "新密码长度至少 6 位";
+
+        List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT password FROM user WHERE username = ?", currentUser.username());
+        if (rows.isEmpty()) return "账号不存在";
+        String currentHash = asString(rows.get(0).get("password"));
+        if (currentHash == null || !passwordEncoder.matches(currentPlainPassword, currentHash)) return "当前密码不正确";
+
+        String newHash = passwordEncoder.encode(newPlainPassword);
+        jdbcTemplate.update("UPDATE user SET password = ? WHERE username = ?", newHash, currentUser.username());
+        casdoorAdminService.updateUserPassword(currentUser.username(), newPlainPassword);
+        return "密码修改成功";
+    }
+
+    @PutMapping("/me/profile")
+    public String updateOwnProfile(@AuthenticationPrincipal Jwt jwt, @RequestBody Map<String, String> payload) {
+        CurrentUser currentUser = currentUserService.requireUser(jwt);
+        String displayName = payload.get("displayName");
+        if (displayName == null || displayName.isBlank()) return "昵称不能为空";
+        if (displayName.length() > 50) return "昵称最长 50 字";
+        // 昵称只存 Casdoor(displayName)，不在本地 user 表重复保存，避免和 Casdoor 数据脱节。
+        casdoorAdminService.updateUserDisplayName(currentUser.username(), displayName);
+        return "昵称修改成功";
     }
 
     @GetMapping("/surveys/pending-count")
@@ -265,15 +282,17 @@ public class SurveyController {
         CurrentUser currentUser = currentUserService.requireUser(jwt);
         LocalDateTime todayStart = LocalDate.now().atStartOfDay();
         LocalDateTime tomorrowStart = todayStart.plusDays(1);
+        int revisitDeadlineDays = tenantSystemSettingsService.getEffectiveSettings(DEFAULT_TENANT_ID).revisitDeadlineDays();
+        LocalDateTime overdueCutoff = todayStart.minusDays(revisitDeadlineDays);
 
         int today;
         int overdue;
         if (currentUser.isAdmin()) {
             today = surveyMapper.countRevisitTodayAdmin(DEFAULT_TENANT_ID, todayStart, tomorrowStart);
-            overdue = surveyMapper.countRevisitOverdueAdmin(DEFAULT_TENANT_ID, todayStart);
+            overdue = surveyMapper.countRevisitOverdueAdmin(DEFAULT_TENANT_ID, overdueCutoff);
         } else {
             today = surveyMapper.countRevisitTodayStaff(currentUser.username(), DEFAULT_TENANT_ID, todayStart, tomorrowStart);
-            overdue = surveyMapper.countRevisitOverdueStaff(currentUser.username(), DEFAULT_TENANT_ID, todayStart);
+            overdue = surveyMapper.countRevisitOverdueStaff(currentUser.username(), DEFAULT_TENANT_ID, overdueCutoff);
         }
 
         Map<String, Object> response = new HashMap<>();
@@ -324,8 +343,7 @@ public class SurveyController {
                 ? phoneRevealSessionService.revealedOrderExpiry(DEFAULT_TENANT_ID, viewerUserId, list.stream().map(Survey::getId).toList(), jwt)
                 : Map.of();
 
-        Map<String, Object> response = new HashMap<>();
-        response.put("data", surveyPhoneDisplayService.toResponseRows(
+        List<Map<String, Object>> rows = surveyPhoneDisplayService.toResponseRows(
                 list,
                 currentUser,
                 viewerUserId,
@@ -337,7 +355,18 @@ public class SurveyController {
                 page,
                 pageSize,
                 request
-        ));
+        );
+        if (currentUser.isAdmin()) {
+            // 昵称只存在 Casdoor，管理员工作台按 owner 批量查一次做展示映射；查不到就退回原始账号名。
+            Map<String, String> nicknames = casdoorAdminService.listDisplayNames();
+            for (Map<String, Object> row : rows) {
+                String owner = asString(row.get("owner"));
+                row.put("ownerNickname", nicknames.getOrDefault(owner, owner));
+            }
+        }
+
+        Map<String, Object> response = new HashMap<>();
+        response.put("data", rows);
         response.put("total", total);
         response.put("pages", (int) Math.ceil((double) total / pageSize));
         return response;
@@ -473,14 +502,24 @@ public class SurveyController {
     }
 
     @PutMapping("/surveys/{id}/process")
-    public String process(@PathVariable Long id) {
-        surveyMapper.updateStatus(id);
+    public String process(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+        CurrentUser currentUser = currentUserService.requireUser(jwt);
+        int updated = currentUser.isAdmin()
+                ? surveyMapper.updateAdminStatus(DEFAULT_TENANT_ID, id)
+                : surveyMapper.updateStaffStatus(currentUser.username(), DEFAULT_TENANT_ID, id);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "SURVEY_ACCESS_DENIED");
+        }
         return "处理完成";
     }
 
     @DeleteMapping("/surveys/{id}")
-    public String delete(@PathVariable Long id) {
-        surveyMapper.deleteById(id);
+    public String delete(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id) {
+        currentUserService.requireAdmin(jwt);
+        int deleted = surveyMapper.deleteByIdTenant(DEFAULT_TENANT_ID, id);
+        if (deleted == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "SURVEY_NOT_FOUND");
+        }
         return "删除成功";
     }
 
@@ -519,15 +558,33 @@ public class SurveyController {
     }
 
     @PutMapping("/surveys/{id}/share")
-    public String shareSurvey(@PathVariable Long id, @RequestBody Map<String, String> payload) {
-        surveyMapper.updateVisibility(id, payload.get("visibility"), payload.get("sharedUsers"));
+    public String shareSurvey(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id, @RequestBody Map<String, String> payload) {
+        currentUserService.requireAdmin(jwt);
+        String visibility = payload.get("visibility");
+        if (visibility == null || !ALLOWED_VISIBILITY.contains(visibility)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "VISIBILITY_INVALID");
+        }
+        String sharedUsers = "CUSTOM".equals(visibility) ? payload.get("sharedUsers") : null;
+        int updated = surveyMapper.updateVisibilityTenant(DEFAULT_TENANT_ID, id, visibility, sharedUsers);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.NOT_FOUND, "SURVEY_NOT_FOUND");
+        }
         return "共享权限设置成功";
     }
 
     @PutMapping("/surveys/{id}/remarks")
-    public String updateRemarks(@PathVariable Long id, @RequestBody Map<String, String> payload) {
-        surveyMapper.updateRemarks(id, payload.get("remarks"));
-        return "备注保存成功";
+    public String updateRemarks(@AuthenticationPrincipal Jwt jwt, @PathVariable Long id, @RequestBody Map<String, String> payload) {
+        CurrentUser currentUser = currentUserService.requireUser(jwt);
+        String remarks = payload.get("remarks");
+        String project = payload.get("project");
+        String budget = payload.get("budget");
+        int updated = currentUser.isAdmin()
+                ? surveyMapper.updateAdminDetail(DEFAULT_TENANT_ID, id, remarks, project, budget)
+                : surveyMapper.updateStaffDetail(currentUser.username(), DEFAULT_TENANT_ID, id, remarks, project, budget);
+        if (updated == 0) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "SURVEY_ACCESS_DENIED");
+        }
+        return "保存成功";
     }
 
     private void applyPhonePrivacy(Survey survey, Object rawPhoneValue) {

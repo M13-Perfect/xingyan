@@ -16,7 +16,6 @@ import java.util.Map;
 
 @RestController
 @RequestMapping("/api/notices")
-@CrossOrigin
 public class NoticeController {
 
     private static final Logger log = LoggerFactory.getLogger(NoticeController.class);
