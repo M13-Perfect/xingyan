@@ -394,7 +394,7 @@
               <el-checkbox class="notice-row-check" :model-value="selectedNoticeIds.includes(item.id)" @change="toggleNoticeSelection(item.id)" />
               <div class="notice-row-content">
                 <div class="notice-row-top">
-                  <span :class="['notice-level', item.level ? item.level.toLowerCase() : 'info']">{{ item.level || 'INFO' }}</span>
+                  <span :class="['notice-level', item.level ? item.level.toLowerCase() : 'info']">{{ noticeLevelLabel(item.level) }}</span>
                   <strong class="notice-row-title">{{ item.title }}</strong>
                   <span class="notice-row-time">{{ item.createdAt }}</span>
                 </div>
@@ -421,9 +421,9 @@
             <div class="notice-create-grid">
               <el-input v-model="noticeForm.title" placeholder="通知标题（必填）" />
               <el-select v-model="noticeForm.level">
-                <el-option label="INFO" value="INFO" />
-                <el-option label="WARN" value="WARN" />
-                <el-option label="ALERT" value="ALERT" />
+                <el-option label="信息" value="INFO" />
+                <el-option label="警告" value="WARN" />
+                <el-option label="紧急" value="ALERT" />
               </el-select>
               <el-input v-model="noticeForm.content" type="textarea" placeholder="通知内容（必填）" />
               <el-button type="primary" @click="publishNotice">发布通知</el-button>
@@ -731,6 +731,9 @@ const noticeList = ref([])
 const noticeTickerList = ref([])
 const selectedNoticeIds = ref([])
 const noticeForm = reactive({ title: '', content: '', level: 'INFO' })
+// 通知级别的存储值保持英文（后端/样式类依赖），仅展示层转中文。
+const NOTICE_LEVEL_LABELS = { INFO: '信息', WARN: '警告', ALERT: '紧急' }
+const noticeLevelLabel = (level) => NOTICE_LEVEL_LABELS[level] || NOTICE_LEVEL_LABELS.INFO
 const isAllCurrentNoticesSelected = computed(
   () => noticeList.value.length > 0 && noticeList.value.every(item => selectedNoticeIds.value.includes(item.id))
 )

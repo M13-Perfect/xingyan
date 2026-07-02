@@ -617,20 +617,22 @@ public class SurveyController {
             return new SurveySearch(null, null, null);
         }
         String value = keyword.trim();
+        // 数字输入同时按手机号哈希与普通文本字段搜索（SQL 侧 OR 并联）：
+        // 纯数字也可能是 QQ 等社交账号，只走哈希会漏掉 social_account/wechat 命中。
         if (value.matches("\\d{4}")) {
-            return new SurveySearch(null, null, phonePrivacyService.buildPhoneSuffix4HashFromLast4(value, DEFAULT_TENANT_ID));
+            return new SurveySearch(value, null, phonePrivacyService.buildPhoneSuffix4HashFromLast4(value, DEFAULT_TENANT_ID));
         }
         int digitCount = (int) value.chars().filter(Character::isDigit).count();
         if (digitCount >= 5 && value.matches("[+\\d\\s().-]+")) {
             try {
                 String normalized = phonePrivacyService.normalizePhone(value, "CN");
-                return new SurveySearch(null, phonePrivacyService.buildPhoneHash(normalized, DEFAULT_TENANT_ID), null);
+                return new SurveySearch(value, phonePrivacyService.buildPhoneHash(normalized, DEFAULT_TENANT_ID), null);
             } catch (PhonePrivacyException e) {
                 if (!"PHONE_INVALID".equals(e.code())) {
                     throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.code(), e);
                 }
                 String legacyDigits = phonePrivacyService.normalizeLegacyDigitsPhone(value);
-                return new SurveySearch(null, phonePrivacyService.buildPhoneHash(legacyDigits, DEFAULT_TENANT_ID), null);
+                return new SurveySearch(value, phonePrivacyService.buildPhoneHash(legacyDigits, DEFAULT_TENANT_ID), null);
             }
         }
         return new SurveySearch(value, null, null);

@@ -19,11 +19,16 @@ public interface SurveyMapper {
             "OR social_account LIKE CONCAT('%',#{keyword},'%') OR project LIKE CONCAT('%',#{keyword},'%'))";
     String PHONE_BACKFILL_MISSING_SCOPE = "(phone_hash IS NULL OR phone_mask IS NULL OR phone_mask = '' OR phone_ciphertext IS NULL " +
             "OR phone_iv IS NULL OR phone_tag IS NULL OR phone_suffix4_hash IS NULL)";
-    String SEARCH_SCOPE = "<choose>" +
-            "  <when test='phoneHash != null'> AND tenant_id = #{tenantId} AND phone_hash = #{phoneHash} </when>" +
-            "  <when test='phoneSuffix4Hash != null'> AND tenant_id = #{tenantId} AND phone_suffix4_hash = #{phoneSuffix4Hash} </when>" +
-            "  <when test='keyword != null and keyword != \"\"'> AND " + KEYWORD_SCOPE + " </when>" +
-            "</choose>";
+    // 数字关键词可能是手机号也可能是 QQ 等纯数字社交账号：哈希命中与文本 LIKE 用 OR 并联，
+    // 而不是互斥分支（外层 WHERE 已限定 tenant_id）。275 行量级下 OR 的索引退化可忽略。
+    String SEARCH_SCOPE = "<if test='phoneHash != null or phoneSuffix4Hash != null or (keyword != null and keyword != \"\")'>" +
+            " AND (" +
+            "<trim prefixOverrides='OR'>" +
+            "  <if test='phoneHash != null'> OR phone_hash = #{phoneHash} </if>" +
+            "  <if test='phoneSuffix4Hash != null'> OR phone_suffix4_hash = #{phoneSuffix4Hash} </if>" +
+            "  <if test='keyword != null and keyword != \"\"'> OR " + KEYWORD_SCOPE + " </if>" +
+            "</trim>" +
+            ") </if>";
 
     @Select("<script>" +
             PUBLIC_COLUMNS + " FROM survey " +
