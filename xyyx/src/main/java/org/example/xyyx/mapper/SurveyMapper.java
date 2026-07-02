@@ -203,6 +203,16 @@ public interface SurveyMapper {
     @Update("UPDATE survey SET next_survey_date = #{date} WHERE tenant_id = #{tenantId} AND id = #{id} AND " + STAFF_SCOPE)
     int updateStaffNextDate(@Param("username") String username, @Param("tenantId") String tenantId, @Param("id") Long id, @Param("date") LocalDateTime date);
 
+    // 重复录入归属提示用：按哈希/微信定位已有记录的 owner（可能为 NULL，调用方需判空）。
+    @Select("SELECT owner FROM survey WHERE tenant_id = #{tenantId} AND phone_hash = #{phoneHash} LIMIT 1")
+    String selectOwnerByPhoneHash(@Param("tenantId") String tenantId, @Param("phoneHash") byte[] phoneHash);
+
+    @Select("SELECT COUNT(*) FROM survey WHERE tenant_id = #{tenantId} AND wechat = #{wechat}")
+    int countByWechat(@Param("tenantId") String tenantId, @Param("wechat") String wechat);
+
+    @Select("SELECT owner FROM survey WHERE tenant_id = #{tenantId} AND wechat = #{wechat} LIMIT 1")
+    String selectOwnerByWechat(@Param("tenantId") String tenantId, @Param("wechat") String wechat);
+
     // 可见性/共享名单是管理员专属动作，加租户作用域并返回行数供控制器判定。
     @Update("UPDATE survey SET visibility = #{visibility}, shared_users = #{sharedUsers} WHERE tenant_id = #{tenantId} AND id = #{id}")
     int updateVisibilityTenant(@Param("tenantId") String tenantId, @Param("id") Long id, @Param("visibility") String visibility, @Param("sharedUsers") String sharedUsers);

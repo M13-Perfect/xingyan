@@ -29,7 +29,7 @@ class SurveyControllerUserManagementTests {
         )).replace("\r\n", "\n");
 
         assertTrue(controller.contains("String nickname = payload.get(\"nickname\") == null ? null : payload.get(\"nickname\").trim();"));
-        assertTrue(controller.contains("if (nickname != null && nickname.length() > 50) return \"昵称格式不正确：最长 50 字\";"));
+        assertTrue(controller.contains("if (nickname != null && nickname.length() > 20) return \"昵称格式不正确：最长 20 字\";"));
         assertTrue(controller.contains("String displayName = (nickname == null || nickname.isEmpty()) ? username : nickname;"));
         assertTrue(controller.contains("casdoorAdminService.createUser(username, plainPassword, displayName);"));
 

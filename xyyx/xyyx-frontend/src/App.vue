@@ -214,9 +214,9 @@
           <div class="form-card user-form-bg">
             <h4 class="form-title"> 开通新员工</h4>
             <div class="form-grid-fluid">
-              <input v-model="userForm.username" placeholder="设置账号（字母/数字/下划线/连字符，2-20 位）" class="text-black">
-              <input v-model="userForm.nickname" placeholder="设置昵称（可选，最长 50 字，默认与账号相同）" class="text-black">
-              <input v-model="userForm.password" type="password" placeholder="设置初始密码（6-32 位）" class="text-black">
+              <input v-model="userForm.username" placeholder="账号（4-20 位字母/数字/_/-）" maxlength="20" class="text-black">
+              <input v-model="userForm.nickname" placeholder="昵称（选填，最长 20 字）" maxlength="20" class="text-black">
+              <input v-model="userForm.password" type="password" placeholder="初始密码（8-20 位）" maxlength="20" class="text-black">
               <button @click="submitAddUser" class="btn-add-fluid dark">确认开通</button>
             </div>
           </div>
@@ -243,7 +243,8 @@
                     v-model="userPasswordDraft[u.id]"
                     class="user-password-input text-black"
                     type="password"
-                    placeholder="6 位以上新密码"
+                    placeholder="新密码（8-20 位）"
+                    maxlength="20"
                   >
                 </td>
                 <td class="user-actions">
@@ -322,7 +323,7 @@
               </label>
               <label class="policy-field">
                 <span>昵称</span>
-                <input v-model.trim="personalCenterForm.displayName" class="text-black" placeholder="设置昵称（支持中文）" maxlength="50">
+                <input v-model.trim="personalCenterForm.displayName" class="text-black" placeholder="昵称（支持中文，最长 20 字）" maxlength="20">
               </label>
             </div>
             <div class="modal-status" v-if="personalCenterMessage">{{ personalCenterMessage }}</div>
@@ -335,8 +336,8 @@
             <h4 class="form-title">修改密码</h4>
             <div class="form-grid-fluid">
               <input v-model="passwordChangeForm.currentPassword" type="password" placeholder="当前密码" class="text-black" autocomplete="current-password">
-              <input v-model="passwordChangeForm.newPassword" type="password" placeholder="新密码（至少 6 位）" class="text-black" autocomplete="new-password">
-              <input v-model="passwordChangeForm.confirmPassword" type="password" placeholder="确认新密码" class="text-black" autocomplete="new-password">
+              <input v-model="passwordChangeForm.newPassword" type="password" placeholder="新密码（8-20 位）" maxlength="20" class="text-black" autocomplete="new-password">
+              <input v-model="passwordChangeForm.confirmPassword" type="password" placeholder="确认新密码" maxlength="20" class="text-black" autocomplete="new-password">
             </div>
             <p class="policy-warning">忘记当前密码请联系管理员，在"员工管理"里重置。</p>
             <div class="modal-status" v-if="passwordChangeMessage">{{ passwordChangeMessage }}</div>
@@ -362,7 +363,7 @@
 
           <form class="modal-body form-grid-fluid create-survey-form" @submit.prevent="submitAdd">
             <input v-model="form.name" placeholder="称呼 (必填)" class="text-black">
-            <input v-model="form.phone" placeholder="电话（11 位手机号，不可重复）" class="text-black">
+            <input v-model="form.phone" placeholder="电话（11 位手机号，不可重复）" maxlength="14" class="text-black">
             <input v-model="form.wechat" placeholder="微信 (不可重复)" class="text-black">
             <input v-model="form.city" placeholder="城市" class="text-black">
             <input v-model="form.socialAccount" placeholder="社交账号" class="text-black">
@@ -635,7 +636,7 @@ const saveNickname = async () => {
 const submitOwnPasswordChange = async () => {
   const { currentPassword, newPassword, confirmPassword } = passwordChangeForm
   if (!currentPassword) return passwordChangeMessage.value = '请输入当前密码'
-  if (!newPassword || newPassword.length < 6) return passwordChangeMessage.value = '新密码至少 6 位'
+  if (!newPassword || newPassword.length < 8 || newPassword.length > 20) return passwordChangeMessage.value = '新密码长度需为 8-20 位'
   if (newPassword !== confirmPassword) return passwordChangeMessage.value = '两次输入的新密码不一致'
 
   isPasswordChangeSaving.value = true
@@ -1469,10 +1470,10 @@ const saveSystemSettings = async () => {
 const submitAddUser = async () => {
   if (user.role !== 'admin') return alert('仅管理员可操作');
   if(!userForm.value.username) return alert('请填写账号');
-  if(!/^[A-Za-z0-9_-]{2,20}$/.test(userForm.value.username)) return alert('账号格式不正确：仅支持字母、数字、下划线、连字符，长度 2-20 位');
-  if((userForm.value.nickname || '').trim().length > 50) return alert('昵称格式不正确：最长 50 字');
+  if(!/^[A-Za-z0-9_-]{4,20}$/.test(userForm.value.username)) return alert('账号格式不正确：仅支持字母、数字、下划线、连字符，长度 4-20 位');
+  if((userForm.value.nickname || '').trim().length > 20) return alert('昵称格式不正确：最长 20 字');
   if(!userForm.value.password) return alert('请填写初始密码');
-  if(userForm.value.password.length < 6 || userForm.value.password.length > 32) return alert('密码格式不正确：长度需为 6-32 位');
+  if(userForm.value.password.length < 8 || userForm.value.password.length > 20) return alert('密码格式不正确：长度需为 8-20 位');
   if(!confirm(`确认开通名为 [${userForm.value.username}] 的新员工账号吗？`)) return;
   try {
     const encryptedPassword = await encryptPassword(userForm.value.password);
@@ -1495,7 +1496,7 @@ const updateStaffPassword = async (staff) => {
   if (user.role !== 'admin') return alert('仅管理员可操作');
   const newPassword = userPasswordDraft[staff.id];
   if (!newPassword) return alert('请输入新密码');
-  if (newPassword.length < 6) return alert('新密码至少 6 位');
+  if (newPassword.length < 8 || newPassword.length > 20) return alert('新密码长度需为 8-20 位');
   if (!confirm(`确认修改员工 [${staff.username}] 的密码吗？`)) return;
 
   try {

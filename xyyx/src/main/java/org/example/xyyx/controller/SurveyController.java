@@ -132,9 +132,9 @@ public class SurveyController {
         String nickname = payload.get("nickname") == null ? null : payload.get("nickname").trim();
         if (username == null || username.isBlank()) return "账号不能为空";
         // Casdoor 的用户名只接受字母/数字/下划线/连字符；这里前置校验并给出明确格式与长度，避免落到 Casdoor 侧变成 500。
-        if (!username.matches("[A-Za-z0-9_-]{2,20}")) return "账号格式不正确：仅支持字母、数字、下划线、连字符，长度 2-20 位";
+        if (!username.matches("[A-Za-z0-9_-]{4,20}")) return "账号格式不正确：仅支持字母、数字、下划线、连字符，长度 4-20 位";
         if (encryptedPassword == null || encryptedPassword.isBlank()) return "初始密码不能为空";
-        if (nickname != null && nickname.length() > 50) return "昵称格式不正确：最长 50 字";
+        if (nickname != null && nickname.length() > 20) return "昵称格式不正确：最长 20 字";
         if ("admin".equalsIgnoreCase(role)) return "禁止创建管理员账号";
 
         if (!"staff".equalsIgnoreCase(role)) return "仅允许创建业务专员";
@@ -150,7 +150,7 @@ public class SurveyController {
             return "密码解密失败";
         }
 
-        if (plainPassword.length() < 6 || plainPassword.length() > 32) return "密码格式不正确：长度需为 6-32 位";
+        if (plainPassword.length() < 8 || plainPassword.length() > 20) return "密码格式不正确：长度需为 8-20 位";
 
         String passwordHash = passwordEncoder.encode(plainPassword);
         jdbcTemplate.update("INSERT INTO user (username, password, role) VALUES (?, ?, ?)", username, passwordHash, role);
@@ -213,7 +213,7 @@ public class SurveyController {
         } catch (IllegalArgumentException e) {
             return "密码解密失败";
         }
-        if (plainPassword.length() < 6 || plainPassword.length() > 32) return "密码格式不正确：长度需为 6-32 位";
+        if (plainPassword.length() < 8 || plainPassword.length() > 20) return "密码格式不正确：长度需为 8-20 位";
 
         String passwordHash = passwordEncoder.encode(plainPassword);
         jdbcTemplate.update("UPDATE user SET password = ? WHERE id = ?", passwordHash, id);
@@ -239,7 +239,7 @@ public class SurveyController {
         } catch (IllegalArgumentException e) {
             return "密码解密失败";
         }
-        if (newPlainPassword.length() < 6 || newPlainPassword.length() > 32) return "新密码格式不正确：长度需为 6-32 位";
+        if (newPlainPassword.length() < 8 || newPlainPassword.length() > 20) return "新密码格式不正确：长度需为 8-20 位";
 
         List<Map<String, Object>> rows = jdbcTemplate.queryForList("SELECT password FROM user WHERE username = ?", currentUser.username());
         if (rows.isEmpty()) return "账号不存在";
@@ -257,7 +257,7 @@ public class SurveyController {
         CurrentUser currentUser = currentUserService.requireUser(jwt);
         String displayName = payload.get("displayName");
         if (displayName == null || displayName.isBlank()) return "昵称不能为空";
-        if (displayName.length() > 50) return "昵称最长 50 字";
+        if (displayName.length() > 20) return "昵称格式不正确：最长 20 字";
         // 昵称只存 Casdoor(displayName)，不在本地 user 表重复保存，避免和 Casdoor 数据脱节。
         casdoorAdminService.updateUserDisplayName(currentUser.username(), displayName);
         return "昵称修改成功";
@@ -385,6 +385,9 @@ public class SurveyController {
             s.setName((String) params.get("name"));
             applyPhonePrivacy(s, params.get("phone"));
             s.setWechat(params.get("wechat") != null && !params.get("wechat").toString().isEmpty() ? params.get("wechat").toString() : null);
+            if (s.getWechat() != null && surveyMapper.countByWechat(DEFAULT_TENANT_ID, s.getWechat()) > 0) {
+                throw duplicateOwnedError("微信", surveyMapper.selectOwnerByWechat(DEFAULT_TENANT_ID, s.getWechat()));
+            }
             s.setSocialAccount(params.get("socialAccount") != null && !params.get("socialAccount").toString().isEmpty() ? params.get("socialAccount").toString() : null);
             s.setCity((String) params.get("city"));
             s.setProject((String) params.get("project"));
@@ -395,10 +398,13 @@ public class SurveyController {
             s.setNextSurveyDate(LocalDateTime.now().plusDays(days));
             surveyMapper.insert(s);
             res.put("success", true);
+        } catch (ResponseStatusException e) {
+            // 重复归属提示等已带用户可读文案，直接透传给全局处理器
+            throw e;
         } catch (PhonePrivacyException e) {
             res.put("success", false);
             res.put("code", e.code());
-            res.put("message", e.code());
+            res.put("message", org.example.xyyx.config.GlobalExceptionHandler.message(e.code()));
         } catch (DuplicateKeyException e) {
             res.put("success", false);
             res.put("message", "录入失败：电话或微信号在系统中已存在");
@@ -590,6 +596,18 @@ public class SurveyController {
         return "保存成功";
     }
 
+    /**
+     * 重复录入时告知归属人：账号 + Casdoor 当前昵称（昵称可改，须实时查询，查不到退回账号名）。
+     */
+    private ResponseStatusException duplicateOwnedError(String field, String owner) {
+        if (owner == null || owner.isBlank()) {
+            return new ResponseStatusException(HttpStatus.BAD_REQUEST, "该" + field + "已存在，请勿重复录入");
+        }
+        String nickname = casdoorAdminService.getAccount(owner).getOrDefault("displayName", owner);
+        return new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                "该" + field + "已被录入，归属：账号 " + owner + "（昵称 " + nickname + "）");
+    }
+
     private void applyPhonePrivacy(Survey survey, Object rawPhoneValue) {
         if (rawPhoneValue == null || rawPhoneValue.toString().isBlank()) {
             survey.setPhone(null);
@@ -598,7 +616,7 @@ public class SurveyController {
         String normalized = phonePrivacyService.normalizePhone(rawPhoneValue.toString(), "CN");
         byte[] phoneHash = phonePrivacyService.buildPhoneHash(normalized, survey.getTenantId());
         if (surveyMapper.countByPhoneHash(survey.getTenantId(), phoneHash) > 0) {
-            throw new PhonePrivacyException("PHONE_ALREADY_EXISTS");
+            throw duplicateOwnedError("手机号", surveyMapper.selectOwnerByPhoneHash(survey.getTenantId(), phoneHash));
         }
         EncryptedPhone encrypted = phonePrivacyService.encryptPhone(normalized, survey.getTenantId(), survey.getCustomerUuid());
         survey.setPhone(null);

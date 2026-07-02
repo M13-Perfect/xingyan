@@ -25,7 +25,8 @@ class SurveyPhonePrivacyTests {
         assertTrue(controller.contains("buildPhoneHash"));
         assertTrue(controller.contains("catch (PhonePrivacyException e)"));
         assertTrue(controller.contains("res.put(\"code\", e.code())"));
-        assertTrue(controller.contains("res.put(\"message\", e.code())"));
+        // 用户可读文案：错误码经 GlobalExceptionHandler.message 映射为中文，不再把裸 code 当 message
+        assertTrue(controller.contains("res.put(\"message\", org.example.xyyx.config.GlobalExceptionHandler.message(e.code()))"));
         assertFalse(controller.contains("s.setPhone(params.get(\"phone\")"));
 
         assertTrue(mapper.contains("phone_ciphertext"));
