@@ -78,13 +78,31 @@ public class CasdoorAdminService {
 
     /**
      * 同步修改 Casdoor 用户密码（管理员重置 / 用户自助改密码时调用）。
+     * 必须走 /api/set-password：update-user 的 password 列会把明文原样落库（不做 BCrypt），
+     * 导致该账号之后新旧密码都无法登录——2026-07-03 生产事故实证。set-password 按组织策略正确哈希。
      */
     public void updateUserPassword(String username, String plainPassword) {
-        updateUserFields(username, "password", Map.of(
-                "owner", organization,
-                "name", username,
-                "password", plainPassword
-        ));
+        org.springframework.util.LinkedMultiValueMap<String, String> form = new org.springframework.util.LinkedMultiValueMap<>();
+        form.add("userOwner", organization);
+        form.add("userName", username);
+        form.add("newPassword", plainPassword);
+        Map<String, Object> response;
+        try {
+            response = restClient.post()
+                    .uri("/api/set-password")
+                    .header(HttpHeaders.AUTHORIZATION, basicAuthHeader)
+                    .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                    .body(form)
+                    .retrieve()
+                    .body(Map.class);
+        } catch (Exception e) {
+            throw new IllegalStateException("Casdoor 修改密码失败: " + e.getMessage(), e);
+        }
+        String status = response == null ? null : asString(response.get("status"));
+        if (!"ok".equals(status)) {
+            String msg = response == null ? null : asString(response.get("msg"));
+            throw new IllegalStateException("Casdoor 修改密码失败: " + msg);
+        }
     }
 
     /**
