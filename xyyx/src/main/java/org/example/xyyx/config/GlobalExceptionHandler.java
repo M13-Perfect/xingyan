@@ -26,8 +26,16 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(ResponseStatusException.class)
     public ResponseEntity<Map<String, Object>> handleStatus(ResponseStatusException e, HttpServletRequest request) {
         HttpStatus status = HttpStatus.valueOf(e.getStatusCode().value());
-        String code = e.getReason() == null || e.getReason().isBlank() ? status.name() : e.getReason();
-        return error(status, code, message(code), request);
+        String reason = e.getReason();
+        if (reason == null || reason.isBlank()) {
+            return error(status, status.name(), message(status.name()), request);
+        }
+        // reason 是全大写错误码 → 查文案映射；reason 本身已是给用户看的人话 → 只放 message，code 保持机器码。
+        // 前端依赖 "message != code" 判断是否人话，二者绝不能塞同一段中文。
+        if (reason.matches("[A-Z0-9_]+")) {
+            return error(status, reason, message(reason), request);
+        }
+        return error(status, status.name(), reason, request);
     }
 
     @ExceptionHandler(PhonePrivacyException.class)
